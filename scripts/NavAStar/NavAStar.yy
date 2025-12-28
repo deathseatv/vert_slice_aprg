@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"NavAStar",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"NavAStar",
+  "parent":{
+    "name":"7_ExtraUnsorted",
+    "path":"folders/Scripts/7_ExtraUnsorted.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

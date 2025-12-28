@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"TileUtil",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"TileUtil",
+  "parent":{
+    "name":"7_ExtraUnsorted",
+    "path":"folders/Scripts/7_ExtraUnsorted.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

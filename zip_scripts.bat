@@ -1,43 +1,63 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal enabledelayedexpansion
 
-REM =====================================================================
-REM Copies all .gml files from "scripts" and "objects" folders (wherever
-REM they appear under the current directory), preserving relative paths,
-REM then creates scripts.zip in the current directory.
-REM Requires PowerShell (built into modern Windows).
-REM =====================================================================
+:: Set the root directory based on script location
+set "ROOT=%~dp0"
+set "ZIP_NAME=scripts.zip"
+set "ZIP_PATH=%ROOT%%ZIP_NAME%"
 
-set "ROOT=%CD%"
-set "STAGE=%TEMP%\gml_stage_%RANDOM%%RANDOM%"
-set "ZIP=%ROOT%\scripts.zip"
+echo Checking for files in .\scripts\ and .\objects\...
 
-REM Start clean
-if exist "%ZIP%" del /f /q "%ZIP%" >nul 2>&1
-if exist "%STAGE%" rmdir /s /q "%STAGE%" >nul 2>&1
-mkdir "%STAGE%" >nul 2>&1
-
-REM Collect .gml from any "scripts" or "objects" folder under ROOT.
-REM /R walks recursively; the IF ensures we only take paths that contain \scripts\ or \objects\
-for /R "%ROOT%" %%F in (*.gml) do (
-  set "FULL=%%~fF"
-  set "REL=!FULL:%ROOT%\=!"
-
-  echo(!REL! | findstr /I /C:"\scripts\" /C:"\objects\" >nul
-  if not errorlevel 1 (
-    for %%D in ("!REL!") do (
-      if not exist "%STAGE%\%%~dpD" mkdir "%STAGE%\%%~dpD" >nul 2>&1
-    )
-    copy /Y "%%~fF" "%STAGE%\!REL!" >nul
-  )
+:: 1. Cleanup existing zip
+if exist "%ZIP_PATH%" (
+    echo Deleting existing %ZIP_NAME%...
+    del /f /q "%ZIP_PATH%"
 )
 
-REM Create ZIP (scripts.zip)
-powershell -NoLogo -NoProfile -Command ^
-  "Compress-Archive -Path (Join-Path '%STAGE%' '*') -DestinationPath '%ZIP%' -Force"
+:: 2. Create a temporary staging area to manage the zip structure
+set "STAGE=%TEMP%\gml_zip_stage_%RANDOM%"
+if exist "%STAGE%" rd /s /q "%STAGE%"
+mkdir "%STAGE%"
 
-REM Cleanup staging folder
-rmdir /s /q "%STAGE%" >nul 2>&1
+:: 3. Copy .gml files while maintaining directory structure
+set /a FILE_COUNT=0
 
-echo Created: "%ZIP%"
-exit /b 0
+for %%D in (scripts objects) do (
+    if exist "%ROOT%%%D" (
+        echo Scanning %%D...
+        xcopy "%ROOT%%%D\*.gml" "%STAGE%\%%D\" /S /Y /I >nul 2>&1
+        
+        :: Count files found in this directory
+        for /f %%F in ('dir /s /b "%ROOT%%%D\*.gml" 2^>nul ^| find /c /v ""') do (
+            set /a FILE_COUNT+=%%F
+        )
+    )
+)
+
+:: 4. Error handling if no files found
+if %FILE_COUNT% EQU 0 (
+    echo [ERROR] No .gml files found in .\scripts\ or .\objects\.
+    rd /s /q "%STAGE%"
+    pause
+    exit /b 1
+)
+
+echo Found %FILE_COUNT% .gml files. Creating ZIP...
+
+:: 5. Compress using PowerShell
+:: We change directory to the STAGE to ensure the ZIP top-level is scripts/objects
+powershell -Command "& { Set-Location '%STAGE%'; Compress-Archive -Path * -DestinationPath '%ZIP_PATH%' -Force }"
+
+:: 6. Final Cleanup and Output
+rd /s /q "%STAGE%"
+
+if exist "%ZIP_PATH%" (
+    echo Successfully created: %ZIP_PATH%
+    echo Total files included: %FILE_COUNT%
+) else (
+    echo [ERROR] Failed to create ZIP file.
+    pause
+    exit /b 1
+)
+
+pause
