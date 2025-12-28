@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"StateMainMenu",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"StateMainMenu",
+  "parent":{
+    "name":"5_AppStates",
+    "path":"folders/Scripts/5_AppStates.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

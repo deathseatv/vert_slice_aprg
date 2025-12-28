@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"ProjectionUtil",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"ProjectionUtil",
+  "parent":{
+    "name":"4_Rendering",
+    "path":"folders/Scripts/4_Rendering.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

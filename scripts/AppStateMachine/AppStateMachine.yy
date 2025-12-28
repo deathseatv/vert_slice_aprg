@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"AppStateMachine",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"AppStateMachine",
+  "parent":{
+    "name":"5_AppStates",
+    "path":"folders/Scripts/5_AppStates.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

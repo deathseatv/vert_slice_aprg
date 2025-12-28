@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"InputService",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"InputService",
+  "parent":{
+    "name":"2_InfrastrServices",
+    "path":"folders/Scripts/2_InfrastrServices.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

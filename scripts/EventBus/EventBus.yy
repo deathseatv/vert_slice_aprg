@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"EventBus",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"EventBus",
+  "parent":{
+    "name":"1_Messaging",
+    "path":"folders/Scripts/1_Messaging.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

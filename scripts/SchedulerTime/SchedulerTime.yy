@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"SchedulerTime",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"SchedulerTime",
+  "parent":{
+    "name":"Stubs",
+    "path":"folders/Scripts/2_InfrastrServices/Stubs.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

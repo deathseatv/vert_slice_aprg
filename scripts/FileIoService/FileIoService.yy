@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"FileIoService",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"FileIoService",
+  "parent":{
+    "name":"2_InfrastrServices",
+    "path":"folders/Scripts/2_InfrastrServices.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

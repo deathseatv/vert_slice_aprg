@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"AppBoot",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"AppBoot",
+  "parent":{
+    "name":"6_Boot",
+    "path":"folders/Scripts/6_Boot.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"RngSeedService",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"RngSeedService",
+  "parent":{
+    "name":"2_InfrastrServices",
+    "path":"folders/Scripts/2_InfrastrServices.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}
