@@ -9,6 +9,6 @@
 
 #macro ENEMY_SPEED              90     // player is 120 in DomainGame
 #macro ENEMY_PATROL_RADIUS      6
-#macro ENEMY_PATROL_MIN_S       1.00
-#macro ENEMY_PATROL_MAX_S       2.50
+#macro ENEMY_PATROL_PAUSE_MIN_S 2.00
+#macro ENEMY_PATROL_PAUSE_MAX_S 6.00
 #macro ENEMY_CHASE_REPATH_S     0.20   // seconds

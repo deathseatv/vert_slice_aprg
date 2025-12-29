@@ -6,13 +6,17 @@ function enemyai_set_state(_e, _new_state) {
     _e.path_i = 0;
     _e.target_tile = undefined;
 
-    if (_new_state == ENEMY_STATE_PATROL) {
-        _e.patrol_t = random_range(ENEMY_PATROL_MIN_S, ENEMY_PATROL_MAX_S);
-    } else if (_new_state == ENEMY_STATE_CHASE) {
-        _e.chase_repath_t = 0;
-        _e.last_player_tx = -9999;
-        _e.last_player_ty = -9999;
-    }
+	if (_new_state == ENEMY_STATE_PATROL) {
+	    _e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+	}
+	else if (_new_state == ENEMY_STATE_CHASE) {
+	    _e.chase_repath_t = 0;
+	    _e.last_player_tx = -9999;
+	    _e.last_player_ty = -9999;
+	} 
+	else {
+	_e.patrol_pause_t = 0; // no pausing in CHASE/RETURN
+	}
 }
 
 function enemyai_pick_patrol_target(_d, _e) {
@@ -100,18 +104,35 @@ function enemyai_step_all(_d, _dt) {
             if (dist_tp <= 2) {
                 enemyai_set_state(e, ENEMY_STATE_CHASE);
             } else {
-                // countdown to choose (or re-choose) a patrol destination
-                e.patrol_t -= _dt;
+                // PATROL: pause 2–6s between moves
+				var path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
+				var path_done = (path_len == 0) || (e.path_i >= path_len);
 
-                var path_done = (!is_array(e.path_tiles)) || (e.path_i >= array_length(e.path_tiles));
+				if (!path_done) {
+				    // moving to patrol target
+				    enemyai_move_along_path(e, _dt);
 
-                if (e.patrol_t <= 0 || path_done) {
-                    var tgt = enemyai_pick_patrol_target(_d, e);
-                    enemyai_repath_to_tile(_d, e, tgt.x, tgt.y);
-                    e.patrol_t = random_range(ENEMY_PATROL_MIN_S, ENEMY_PATROL_MAX_S);
-                }
+				    // if we just finished this step, start the pause
+				    path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
+				    path_done = (path_len == 0) || (e.path_i >= path_len);
+				    if (path_done) {
+				        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+				    }
+				} else {
+				    // idle pause before choosing next patrol point
+				    if (e.patrol_pause_t <= 0) {
+				        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+				    }
 
-                enemyai_move_along_path(e, _dt);
+				    e.patrol_pause_t -= _dt;
+
+				    if (e.patrol_pause_t <= 0) {
+				        var tgt = enemyai_pick_patrol_target(_d, e);
+				        enemyai_repath_to_tile(_d, e, tgt.x, tgt.y);
+				        // movement begins next tick (keeps the pause clean)
+				    }
+				}
+
             }
         }
         else if (e.state == ENEMY_STATE_CHASE) {

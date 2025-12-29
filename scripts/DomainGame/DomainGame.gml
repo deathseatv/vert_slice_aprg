@@ -134,7 +134,7 @@ function DomainGame(_eventbus, _procgen) constructor {
 		        // tuning
 		        move_speed: ENEMY_SPEED,
 		        patrol_radius: ENEMY_PATROL_RADIUS,
-		        patrol_t: random_range(ENEMY_PATROL_MIN_S, ENEMY_PATROL_MAX_S),
+		        patrol_pause_t: random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S),
 
 		        // chase replanning
 		        chase_repath_t: 0,

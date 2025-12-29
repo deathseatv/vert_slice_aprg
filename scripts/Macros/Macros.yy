@@ -5,8 +5,8 @@
   "isDnD":false,
   "name":"Macros",
   "parent":{
-    "name":"6_Boot",
-    "path":"folders/Scripts/6_Boot.yy",
+    "name":"7_ExtraUnsorted",
+    "path":"folders/Scripts/7_ExtraUnsorted.yy",
   },
   "resourceType":"GMScript",
   "resourceVersion":"2.0",
