@@ -35,4 +35,12 @@ function InputService() constructor {
     mouse_pressed_left = function() {
         return mouse_check_button_pressed(mb_left);
     };
+
+    mouse_pressed_right = function() {
+        return mouse_check_button_pressed(mb_right);
+    };
+
+    mouse_down_left = function() {
+        return mouse_check_button(mb_left);
+    };
 }

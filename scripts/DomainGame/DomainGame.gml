@@ -46,6 +46,17 @@ function DomainGame(_eventbus, _procgen) constructor {
 
     // inventory UI state (toggle with I, close with Esc)
     domain.inventory_open = false;
+// inventory UI widget state (icon column + drag scroll + carry)
+domain.inv_scroll_offset_px = 0;
+domain.inv_drag_active = false;
+domain.inv_drag_start_mouse_y = 0;
+domain.inv_drag_start_scroll_offset = 0;
+domain.inv_drag_threshold_px = 6;
+
+domain.carry_active = false;
+domain.carry_item = undefined;
+domain.carry_original_index = -1;
+
 
     domain._packets = [];
 
@@ -173,6 +184,17 @@ function DomainGame(_eventbus, _procgen) constructor {
             d.player.inventory = [];
             d.player.pickup_target_item_id = -1;
             d.inventory_open = false;
+// UI state init
+d.inv_scroll_offset_px = 0;
+d.inv_drag_active = false;
+d.inv_drag_start_mouse_y = 0;
+d.inv_drag_start_scroll_offset = 0;
+d.inv_drag_threshold_px = 6;
+
+d.carry_active = false;
+d.carry_item = undefined;
+d.carry_original_index = -1;
+
 
             // Items init
             d.items = [];
@@ -185,36 +207,169 @@ function DomainGame(_eventbus, _procgen) constructor {
         },
 
         // Spawn "rusty sword" on nearest tile center to (_wx,_wy)
-        spawn_item_drop_rusty_sword: function(_wx, _wy) {
-            var d = self.parent;
+// (legacy helper kept for compatibility)
+spawn_item_drop_rusty_sword: function(_wx, _wy) {
+    self.spawn_item_drop_named("rusty sword", _wx, _wy);
+},
 
-            var lvl = d.level;
+// Spawn an item with name on nearest tile center to (_wx,_wy)
+spawn_item_drop_named: function(_name, _wx, _wy) {
+    var d = self.parent;
 
-            var nt = tileutil_world_to_nearest_tile(_wx, _wy);
-            var tx = nt.x;
-            var ty = nt.y;
+    var lvl = d.level;
 
-            // clamp to bounds if possible
-            if (is_struct(lvl)) {
-                tx = clamp(tx, 0, lvl.w - 1);
-                ty = clamp(ty, 0, lvl.h - 1);
+    // Ensure items storage exists
+    if (!variable_struct_exists(d, "items") || !is_array(d.items)) d.items = [];
+    if (!variable_struct_exists(d, "_item_next_id")) d._item_next_id = 1;
+
+    var nt = tileutil_world_to_nearest_tile(_wx, _wy);
+    var tx = nt.x;
+    var ty = nt.y;
+
+    // clamp to bounds if possible
+    if (is_struct(lvl)) {
+        tx = clamp(tx, 0, lvl.w - 1);
+        ty = clamp(ty, 0, lvl.h - 1);
+    }
+
+    var c = tileutil_tile_to_world_center(tx, ty);
+
+    var it = {
+        id: d._item_next_id,
+        name: _name,
+        x: c.x,
+        y: c.y,
+        picked: false
+    };
+
+    d._item_next_id += 1;
+    array_push(d.items, it);
+
+    d.eb.publish("domain:item_spawned", { id: it.id, name: it.name, x: it.x, y: it.y });
+    return it.id;
+},
+
+// Drop an item near the player: nearest unoccupied tile to player (Chebyshev rings).
+// Unoccupied means: no unpicked world item already on that tile.
+spawn_item_drop_near_player_named: function(_name) {
+    var d = self.parent;
+
+    // Ensure items storage exists
+    if (!variable_struct_exists(d, "items") || !is_array(d.items)) d.items = [];
+    if (!variable_struct_exists(d, "_item_next_id")) d._item_next_id = 1;
+
+    var lvl = d.level;
+
+    var pt = tileutil_world_to_nearest_tile(d.player.x, d.player.y);
+    var start_tx = pt.x;
+    var start_ty = pt.y;
+
+    // Helper (no closure): checks occupancy by tile coords against an items array
+    function tile_has_item_in_array(_items, _tx, _ty) {
+        var n = array_length(_items);
+        for (var i = 0; i < n; i++) {
+            var it = _items[i];
+            if (it.picked) continue;
+
+            var t2 = tileutil_world_to_nearest_tile(it.x, it.y);
+            if (t2.x == _tx && t2.y == _ty) return true;
+        }
+        return false;
+    }
+
+    // Clamp starting point
+    if (is_struct(lvl)) {
+        start_tx = clamp(start_tx, 0, lvl.w - 1);
+        start_ty = clamp(start_ty, 0, lvl.h - 1);
+    }
+
+    // Snapshot items array reference once (avoid scope/closure issues)
+    var items_arr = d.items;
+
+    // Find nearest unoccupied tile
+    var found = false;
+    var best_tx = start_tx;
+    var best_ty = start_ty;
+
+    // Limit search to avoid infinite loops in degenerate cases
+    var max_r = 32;
+    for (var r = 0; r <= max_r && !found; r++) {
+        // iterate ring perimeter for Chebyshev radius r
+        for (var dy = -r; dy <= r && !found; dy++) {
+            for (var dx = -r; dx <= r && !found; dx++) {
+                if (max(abs(dx), abs(dy)) != r) continue;
+
+                var tx = start_tx + dx;
+                var ty = start_ty + dy;
+
+                if (is_struct(lvl)) {
+                    if (tx < 0 || ty < 0 || tx >= lvl.w || ty >= lvl.h) continue;
+                }
+
+                if (!tile_has_item_in_array(items_arr, tx, ty)) {
+                    best_tx = tx;
+                    best_ty = ty;
+                    found = true;
+                }
             }
+        }
+    }
 
-            var c = tileutil_tile_to_world_center(tx, ty);
+    var c = tileutil_tile_to_world_center(best_tx, best_ty);
 
-            var it = {
-                id: d._item_next_id,
-                name: "rusty sword",
-                x: c.x,
-                y: c.y,
-                picked: false
-            };
+    var it = {
+        id: d._item_next_id,
+        name: _name,
+        x: c.x,
+        y: c.y,
+        picked: false
+    };
 
-            d._item_next_id += 1;
-            array_push(d.items, it);
+    d._item_next_id += 1;
+    array_push(d.items, it);
 
-            d.eb.publish("domain:item_spawned", { id: it.id, name: it.name, x: it.x, y: it.y });
-        },
+    d.eb.publish("domain:item_spawned", { id: it.id, name: it.name, x: it.x, y: it.y });
+    return it.id;
+},
+
+// Give items to player inventory (no stacking): adds 'count' separate entries.
+// Accepts item tokens like: rusty_sword, rusty sword, RustySword.
+give_player_items: function(_item_token, _count) {
+    var d = self.parent;
+
+    if (!is_array(d.player.inventory)) d.player.inventory = [];
+
+    var count = max(0, floor(_count));
+    if (count <= 0) return 0;
+
+    var tok = string_lower(string(_item_token));
+    tok = string_replace_all(tok, "_", " ");
+    tok = string_replace_all(tok, "-", " ");
+
+    // Basic CamelCase -> spaced (RustySword -> rusty sword)
+    if (string_count(" ", tok) == 0) {
+        var s = string(_item_token);
+        var out = "";
+        var len = string_length(s);
+        for (var i = 1; i <= len; i++) {
+            var ch = string_char_at(s, i);
+            var is_upper = (ch >= "A" && ch <= "Z");
+            if (i > 1 && is_upper) out += " ";
+            out += ch;
+        }
+        tok = string_lower(out);
+    }
+
+    tok = string_trim(tok);
+    if (tok == "rustysword") tok = "rusty sword";
+
+    for (var k = 0; k < count; k++) {
+        array_push(d.player.inventory, { name: tok });
+    }
+
+    d.eb.publish("domain:inventory_changed", { added: tok, count: count });
+    return count;
+},
 
         // Begin pickup flow for an item id: immediate if in range else pathfind + auto pickup
         player_try_pickup_item: function(_item_id) {
@@ -466,7 +621,58 @@ function DomainGame(_eventbus, _procgen) constructor {
         }
     };
 
-    domain.render_data = {
+    
+    // --- Ensure give_player_items is available on actions (compat / defensive) ---
+    if (!variable_struct_exists(domain.actions, "give_player_items")) {
+        if (variable_struct_exists(domain.actions, "give_player_items_named") && is_callable(domain.actions.give_player_items_named)) {
+            domain.actions.give_player_items = function(_item_token, _count) {
+                return self.parent.actions.give_player_items_named(_item_token, _count);
+            };
+        } else {
+            domain.actions.give_player_items = function(_item_token, _count) {
+                var d = self.parent;
+
+                if (!variable_struct_exists(d.player, "inventory") || !is_array(d.player.inventory)) d.player.inventory = [];
+
+                var count = max(0, floor(_count));
+                if (count <= 0) return 0;
+
+                // Normalize token: underscores -> spaces; insert spaces in CamelCase; lowercase.
+                var s = string(_item_token);
+                s = string_replace_all(s, "_", " ");
+                // CamelCase -> space before caps (best-effort)
+                var out = "";
+                var i = 1;
+                var ch, prev;
+                while (i <= string_length(s)) {
+                    ch = string_char_at(s, i);
+                    if (i > 1) {
+                        prev = string_char_at(s, i - 1);
+                        if (ord(ch) >= ord("A") && ord(ch) <= ord("Z") && !(ord(prev) >= ord("A") && ord(prev) <= ord("Z")) && prev != " ") {
+                            out += " ";
+                        }
+                    }
+                    out += ch;
+                    i += 1;
+                }
+                s = string_lower(string_trim(out));
+
+                // Canonical mapping
+                if (s == "rusty sword" || s == "rusty  sword" || s == "rustysword") s = "rusty sword";
+
+                var added = 0;
+                repeat (count) {
+                    array_push(d.player.inventory, { name: s });
+                    added += 1;
+                }
+
+                d.eb.publish("domain:inventory_given", { name: s, count: added });
+                return added;
+            };
+        }
+    }
+
+domain.render_data = {
         parent: domain,
         get_packets: function() { return self.parent._packets; }
     };

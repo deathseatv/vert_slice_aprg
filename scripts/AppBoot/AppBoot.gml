@@ -149,6 +149,22 @@ function AppBoot() constructor {
 	    if (console.open) console.submit(_c.line);
 	});
 
+    cmd.register("cmd_give_item", function(_c) {
+        // _c: { target, item, count }
+        if (_c.target != "player") {
+            console.print("Give failed: only target 'player' supported");
+            return;
+        }
+
+        var item = _c.item;
+        var count = _c.count;
+
+        ports.action.impl.give_player_items(item, count);
+        console.print("Gave player " + string(item) + " x" + string(count));
+    });
+
+
+
 	cmd.register("cmd_spawn_enemy", function(_c) {
 	    diag.log("cmd_spawn_enemy received");
 	    console.print("cmd_spawn_enemy received");
@@ -215,6 +231,16 @@ function AppBoot() constructor {
 
 	        cmd.dispatch({ type: "cmd_spawn_enemy", tx: req.tx, ty: req.ty });
 	    }
+
+        if (is_struct(console.pending_give)) {
+            var req2 = console.pending_give;
+            console.pending_give = undefined;
+
+            diag.log("Bridge give target=" + string(req2.target) + " item=" + string(req2.item) + " count=" + string(req2.count));
+            console.print("Bridge dispatch cmd_give_item " + string(req2.target) + " " + string(req2.item) + " " + string(req2.count));
+
+            cmd.dispatch({ type: "cmd_give_item", target: req2.target, item: req2.item, count: req2.count });
+        }
 	};
 
 

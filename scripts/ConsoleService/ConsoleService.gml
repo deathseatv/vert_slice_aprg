@@ -5,6 +5,7 @@ function ConsoleService() constructor {
     max_lines = 200;
 
 	pending_spawn = undefined; // { tx, ty } set when parsed, consumed by AppBoot
+    pending_give = undefined;  // { target, item, count } set when parsed, consumed by AppBoot
 
     // caret blink (optional)
     _blink_t = 0;
@@ -140,6 +141,44 @@ function ConsoleService() constructor {
 		    print("Spawn request enemy at tile " + string(tx) + " " + string(ty));
 		    return;
 		}
+        // /give player item_name count
+        // Example: /give player rusty_sword 10
+        if (string_copy(line, 1, 5) == "/give") {
+            // Expect: /give player <item> <count>
+            // Tokenize (space-delimited) without closures
+            var s2 = line;
+            var len2 = string_length(s2);
+
+            var tokens2 = [];
+            var tok2 = "";
+            for (var k = 1; k <= len2; k++) {
+                var ch2 = string_char_at(s2, k);
+                if (ch2 == " ") {
+                    if (tok2 != "") { array_push(tokens2, tok2); tok2 = ""; }
+                } else {
+                    tok2 += ch2;
+                }
+            }
+            if (tok2 != "") array_push(tokens2, tok2);
+
+            if (array_length(tokens2) != 4) {
+                print("Usage: /give player <item> <count>");
+                return;
+            }
+            if (tokens2[1] != "player") {
+                print("Usage: /give player <item> <count>");
+                return;
+            }
+
+            var item_name = tokens2[2];
+            var count = floor(real(tokens2[3]));
+            if (count < 1) count = 1;
+
+            pending_give = { target: "player", item: item_name, count: count };
+            print("Give request " + string(item_name) + " x" + string(count));
+            return;
+        }
+
 
         print("Unknown command: " + line);
     };
