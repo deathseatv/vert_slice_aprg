@@ -1,3 +1,4 @@
+// scripts/EnemyAi/EnemyAi.gml
 function enemyai_set_state(_e, _new_state) {
     _e.state = _new_state;
 
@@ -6,17 +7,19 @@ function enemyai_set_state(_e, _new_state) {
     _e.path_i = 0;
     _e.target_tile = undefined;
 
-	if (_new_state == ENEMY_STATE_PATROL) {
-	    _e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
-	}
-	else if (_new_state == ENEMY_STATE_CHASE) {
-	    _e.chase_repath_t = 0;
-	    _e.last_player_tx = -9999;
-	    _e.last_player_ty = -9999;
-	} 
-	else {
-	_e.patrol_pause_t = 0; // no pausing in CHASE/RETURN
-	}
+    if (_new_state == ENEMY_STATE_PATROL) {
+        _e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+    }
+    else if (_new_state == ENEMY_STATE_CHASE) {
+        _e.chase_repath_t = 0;
+        _e.last_player_tx = -9999;
+        _e.last_player_ty = -9999;
+        _e.patrol_pause_t = 0;
+    }
+    else {
+        // RETURN
+        _e.patrol_pause_t = 0; // no pausing in CHASE/RETURN
+    }
 }
 
 function enemyai_pick_patrol_target(_d, _e) {
@@ -97,46 +100,71 @@ function enemyai_step_all(_d, _dt) {
     for (var i = 0; i < n; i++) {
         var e = _d.enemies[i];
 
+        // Back-compat defaults
+        if (e.act == undefined) e.act = ACT_IDLE;
+        if (e.act_target_kind == undefined) e.act_target_kind = "none";
+        if (e.atk_cd_t == undefined) e.atk_cd_t = 0;
+        if (e.hitrec_t == undefined) e.hitrec_t = 0;
+
+        // dead: no AI, no movement, no transitions
+        if (e.hp <= 0 || e.state == ENEMY_STATE_DEAD || e.act == ACT_DEAD) {
+            e.hp = 0;
+            e.state = ENEMY_STATE_DEAD;
+            e.act = ACT_DEAD;
+
+            e.path_tiles = [];
+            e.path_i = 0;
+            e.target_tile = undefined;
+
+            _d.enemies[i] = e;
+            continue;
+        }
+
+        // No movement while hit-recovering (keep HIT label)
+        if (e.act == ACT_HIT_RECOVERY) {
+            _d.enemies[i] = e;
+            continue;
+        }
+
         var et = tileutil_world_to_tile(e.x, e.y);
         var dist_tp = tileutil_dist_chebyshev(et.x, et.y, pt.x, pt.y);
 
         if (e.state == ENEMY_STATE_PATROL) {
-            if (dist_tp <= 2) {
+            if (dist_tp <= COMBAT_AGGRO_RANGE_TILES) {
                 enemyai_set_state(e, ENEMY_STATE_CHASE);
             } else {
                 // PATROL: pause 2–6s between moves
-				var path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
-				var path_done = (path_len == 0) || (e.path_i >= path_len);
+                var path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
+                var path_done = (path_len == 0) || (e.path_i >= path_len);
 
-				if (!path_done) {
-				    // moving to patrol target
-				    enemyai_move_along_path(e, _dt);
+                if (!path_done) {
+                    // moving to patrol target
+                    if (e.act != ACT_ATTACK) enemyai_move_along_path(e, _dt);
 
-				    // if we just finished this step, start the pause
-				    path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
-				    path_done = (path_len == 0) || (e.path_i >= path_len);
-				    if (path_done) {
-				        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
-				    }
-				} else {
-				    // idle pause before choosing next patrol point
-				    if (e.patrol_pause_t <= 0) {
-				        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
-				    }
+                    // if we just finished this step, start the pause
+                    path_len = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
+                    path_done = (path_len == 0) || (e.path_i >= path_len);
+                    if (path_done) {
+                        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+                    }
+                } else {
+                    // idle pause before choosing next patrol point
+                    if (e.patrol_pause_t <= 0) {
+                        e.patrol_pause_t = random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S);
+                    }
 
-				    e.patrol_pause_t -= _dt;
+                    e.patrol_pause_t -= _dt;
 
-				    if (e.patrol_pause_t <= 0) {
-				        var tgt = enemyai_pick_patrol_target(_d, e);
-				        enemyai_repath_to_tile(_d, e, tgt.x, tgt.y);
-				        // movement begins next tick (keeps the pause clean)
-				    }
-				}
-
+                    if (e.patrol_pause_t <= 0) {
+                        var tgt = enemyai_pick_patrol_target(_d, e);
+                        enemyai_repath_to_tile(_d, e, tgt.x, tgt.y);
+                        // movement begins next tick
+                    }
+                }
             }
         }
         else if (e.state == ENEMY_STATE_CHASE) {
-            if (dist_tp > 3) {
+            if (dist_tp > COMBAT_AGGRO_RANGE_TILES) {
                 enemyai_set_state(e, ENEMY_STATE_RETURN);
             } else {
                 e.chase_repath_t -= _dt;
@@ -149,7 +177,7 @@ function enemyai_step_all(_d, _dt) {
                     e.last_player_ty = pt.y;
                 }
 
-                enemyai_move_along_path(e, _dt);
+                if (e.act != ACT_ATTACK) enemyai_move_along_path(e, _dt);
             }
         }
         else if (e.state == ENEMY_STATE_RETURN) {
@@ -172,11 +200,17 @@ function enemyai_step_all(_d, _dt) {
                     enemyai_repath_to_tile(_d, e, sx, sy);
                 }
 
-                enemyai_move_along_path(e, _dt);
+                if (e.act != ACT_ATTACK) enemyai_move_along_path(e, _dt);
             }
         }
 
-        // write-back not required for structs, but safe if later swapped
+        // If not combat-engaged, derive act from whether we are currently moving a path
+        if (e.act_target_kind != "player" && e.act != ACT_DEAD && e.state != ENEMY_STATE_DEAD) {
+            var plen = (is_array(e.path_tiles)) ? array_length(e.path_tiles) : 0;
+            var moving = (plen > 0) && (e.path_i < plen);
+            e.act = moving ? ACT_MOVE_TO : ACT_IDLE;
+        }
+
         _d.enemies[i] = e;
     }
 }

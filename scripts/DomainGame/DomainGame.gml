@@ -8,17 +8,40 @@ function DomainGame(_eventbus, _procgen) constructor {
 
     domain.seed = 0;
     domain.level = undefined;
-    // Player domain data (HP included for HUD slice)
-    domain.player = { x: 0, y: 0, vx: 0, vy: 0, hp: 100, hp_max: 100 };
+
+    // Player domain data
+    domain.player = {
+        x: 0, y: 0, vx: 0, vy: 0,
+        hp: 100, hp_max: 100,
+
+        // combat core
+        act: ACT_IDLE,
+        act_target_id: -1,
+        atk_cd_t: 0,
+        hitrec_t: 0,
+
+        // single-swing intent + hold
+        attack_cmd: false,     // one-shot request (consumed on swing start)
+        attack_hold: false,    // true while LMB held on current target
+
+        // single-slot queued order (no stack)
+        queued_attack_cmd: false,
+        queued_target_id: -1,
+
+        // attack windup (interrupt can cancel)
+        swing_active: false,
+        swing_t: 0,
+        swing_target_id: -1
+    };
+
     domain._packets = [];
 
-	move_queue = [];   // array of {x,y}
-	move_active = false;
-	move_target = undefined;
+    move_queue = [];   // array of {x,y}
+    move_active = false;
+    move_target = undefined;
 
-	enemies = [];
-	_enemy_next_id = 1;
-
+    enemies = [];
+    _enemy_next_id = 1;
 
     domain.world_query = {
         parent: domain,
@@ -51,112 +74,155 @@ function DomainGame(_eventbus, _procgen) constructor {
             d.player.vx = 0;
             d.player.vy = 0;
 
-            // Initialize HP for new runs (HUD slice)
+            // HP init
             d.player.hp_max = 100;
             d.player.hp = d.player.hp_max;
 
-			d.enemies = [];
-			d._enemy_next_id = 1;
+            // Combat init
+            d.player.act = ACT_IDLE;
+            d.player.act_target_id = -1;
+            d.player.atk_cd_t = 0;
+            d.player.hitrec_t = 0;
 
+            d.player.attack_cmd = false;
+            d.player.attack_hold = false;
+
+            d.player.queued_attack_cmd = false;
+            d.player.queued_target_id = -1;
+
+            d.player.swing_active = false;
+            d.player.swing_t = 0;
+            d.player.swing_target_id = -1;
+
+            d.enemies = [];
+            d._enemy_next_id = 1;
 
             d.eb.publish("domain:started", { seed: d.seed });
         },
 
-		step_simulation: function(_dt) {
-		    var d = self.parent;
+        step_simulation: function(_dt) {
+            var d = self.parent;
 
-		    // --- Player step (unchanged logic, but no early returns) ---
-		    if (d.move_active) {
-		        if (array_length(d.move_queue) <= 0) {
-		            d.move_active = false;
-		        } else {
-		            var wp = d.move_queue[0];
-		            var dx = wp.x - d.player.x;
-		            var dy = wp.y - d.player.y;
+            // --- Enemy combat overlay vs player (can interrupt player) ---
+            var en = array_length(d.enemies);
+            for (var i = 0; i < en; i++) {
+                combat_step_enemy_vs_player(d, d.enemies[i], _dt);
+            }
 
-		            var dist = point_distance(d.player.x, d.player.y, wp.x, wp.y);
+            // --- Player combat intent (may set move target / windup / swing) ---
+            combat_step_player(d, _dt);
 
-		            var _speed = 120; // pixels per second
-		            var step = _speed * _dt;
+            // If attacking or recovering, hard-stop movement
+            if (d.player.act == ACT_ATTACK || d.player.act == ACT_HIT_RECOVERY) {
+                d.move_queue = [];
+                d.move_active = false;
+            }
 
-		            if (dist <= 1) {
-		                d.player.x = wp.x;
-		                d.player.y = wp.y;
-		                array_delete(d.move_queue, 0, 1);
+            // --- Player movement (disabled during ATTACK/HIT) ---
+            if (d.player.act != ACT_ATTACK && d.player.act != ACT_HIT_RECOVERY) {
+                if (d.move_active) {
+                    if (array_length(d.move_queue) <= 0) {
+                        d.move_active = false;
+                    } else {
+                        var wp = d.move_queue[0];
+                        var dx = wp.x - d.player.x;
+                        var dy = wp.y - d.player.y;
 
-		                if (array_length(d.move_queue) <= 0) {
-		                    d.move_active = false;
-		                }
-		            } else {
-		                var nx = dx / dist;
-		                var ny = dy / dist;
+                        var dist = point_distance(d.player.x, d.player.y, wp.x, wp.y);
 
-		                var adv = min(step, dist);
-		                d.player.x += nx * adv;
-		                d.player.y += ny * adv;
-		            }
-		        }
-		    }
+                        var _speed = 120; // pixels per second
+                        var step = _speed * _dt;
 
-		    // --- Enemy AI step ---
-		    enemyai_step_all(d, _dt);
-		},
+                        if (dist <= 1) {
+                            d.player.x = wp.x;
+                            d.player.y = wp.y;
+                            array_delete(d.move_queue, 0, 1);
 
-		set_move_target: function(_wx, _wy) {
-		    var d = self.parent;
+                            if (array_length(d.move_queue) <= 0) {
+                                d.move_active = false;
+                            }
+                        } else {
+                            var nx = dx / dist;
+                            var ny = dy / dist;
 
-		    // Queue structure supports future A* waypoints
-		    d.move_queue = [];
-		    array_push(d.move_queue, { x: _wx, y: _wy });
-		    d.move_active = true;
-		    d.move_target = { x: _wx, y: _wy };
+                            var adv = min(step, dist);
+                            d.player.x += nx * adv;
+                            d.player.y += ny * adv;
+                        }
+                    }
+                }
+            }
 
-		    d.eb.publish("domain:move_target", { x: _wx, y: _wy });
-		},
-		
-		spawn_enemy: function(_wx, _wy) {
-		    var d = self.parent;
+            // --- Enemy AI step (must respect ACT_ATTACK/ACT_HIT_RECOVERY/DEAD) ---
+            enemyai_step_all(d, _dt);
+        },
 
-		    var st = tileutil_world_to_tile(_wx, _wy);
+        set_move_target: function(_wx, _wy) {
+            var d = self.parent;
 
-		    var e = {
-		        id: d._enemy_next_id,
+            // Queue structure supports future A* waypoints
+            d.move_queue = [];
+            array_push(d.move_queue, { x: _wx, y: _wy });
+            d.move_active = true;
+            d.move_target = { x: _wx, y: _wy };
 
-		        // HUD slice: HP fields
-		        hp: 30,
-		        hp_max: 30,
+            d.eb.publish("domain:move_target", { x: _wx, y: _wy });
+        },
 
-		        // world position (pixels)
-		        x: _wx,
-		        y: _wy,
+        spawn_enemy: function(_wx, _wy) {
+            var d = self.parent;
 
-		        // immutable spawn tile
-		        spawn_tile: { x: st.x, y: st.y },
+            var st = tileutil_world_to_tile(_wx, _wy);
 
-		        // ai state
-		        state: ENEMY_STATE_PATROL,
-		        target_tile: undefined,
+            var e = {
+                id: d._enemy_next_id,
 
-		        // path
-		        path_tiles: [],
-		        path_i: 0,
+                // HP fields
+                hp: 30,
+                hp_max: 30,
 
-		        // tuning
-		        move_speed: ENEMY_SPEED,
-		        patrol_radius: ENEMY_PATROL_RADIUS,
-		        patrol_pause_t: random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S),
+                // world position (pixels)
+                x: _wx,
+                y: _wy,
 
-		        // chase replanning
-		        chase_repath_t: 0,
-		        last_player_tx: -9999,
-		        last_player_ty: -9999
-		    };
+                // immutable spawn tile
+                spawn_tile: { x: st.x, y: st.y },
 
-		    d._enemy_next_id += 1;
-		    array_push(d.enemies, e);
+                // ai state
+                state: ENEMY_STATE_PATROL,
+                target_tile: undefined,
 
-		    d.eb.publish("domain:enemy_spawned", { id: e.id, x: e.x, y: e.y });
-		}
+                // path
+                path_tiles: [],
+                path_i: 0,
+
+                // tuning
+                move_speed: ENEMY_SPEED,
+                patrol_radius: ENEMY_PATROL_RADIUS,
+                patrol_pause_t: random_range(ENEMY_PATROL_PAUSE_MIN_S, ENEMY_PATROL_PAUSE_MAX_S),
+
+                // chase replanning
+                chase_repath_t: 0,
+                last_player_tx: -9999,
+                last_player_ty: -9999,
+
+                // combat
+                act: ACT_IDLE,
+                act_target_kind: "none", // "player" when engaged
+                atk_cd_t: 0,
+                hitrec_t: 0,
+                damage_melee: COMBAT_DAMAGE_MELEE,
+
+                // attack windup (interrupt can cancel)
+                swing_active: false,
+                swing_t: 0
+            };
+
+            d._enemy_next_id += 1;
+            array_push(d.enemies, e);
+
+            d.eb.publish("domain:enemy_spawned", { id: e.id, x: e.x, y: e.y });
+        }
     };
 
     domain.snapshot = {
@@ -199,40 +265,39 @@ function DomainGame(_eventbus, _procgen) constructor {
         can_walk: function(_x, _y) { return true; }
     };
 
-	build_render_packets = function() {
-	    self._packets = [];
+    build_render_packets = function() {
+        self._packets = [];
 
-	    if (is_struct(self.level)) {
-	        var step = 32;
-	        for (var yy = 0; yy <= self.level.h * step; yy += step) {
-	            for (var xx = 0; xx <= self.level.w * step; xx += step) {
-	                array_push(self._packets, { kind: "tile", wx: xx + 16, wy: yy + 16, depth_key: yy });
-	            }
-	        }
-	    }
-		
-		if (is_struct(move_target)) {
-		    array_push(self._packets, {
-		        kind: "target",
-		        wx: move_target.x,
-		        wy: move_target.y,
-		        depth_key: move_target.y + 2
-		    });
-		}
-		
-	    array_push(self._packets, { kind: "player", wx: self.player.x, wy: self.player.y, depth_key: self.player.y + 1 });
-				// enemies
-		var n = array_length(self.enemies);
-		for (var i = 0; i < n; i++) {
-		    var e = self.enemies[i];
-		    array_push(self._packets, {
-		        kind: "enemy",
-		        wx: e.x,
-		        wy: e.y,
-		        depth_key: e.y + 3
-		    });
-		}
+        if (is_struct(self.level)) {
+            var step = 32;
+            for (var yy = 0; yy <= self.level.h * step; yy += step) {
+                for (var xx = 0; xx <= self.level.w * step; xx += step) {
+                    array_push(self._packets, { kind: "tile", wx: xx + 16, wy: yy + 16, depth_key: yy });
+                }
+            }
+        }
 
-	};
+        if (is_struct(move_target)) {
+            array_push(self._packets, {
+                kind: "target",
+                wx: move_target.x,
+                wy: move_target.y,
+                depth_key: move_target.y + 2
+            });
+        }
 
+        array_push(self._packets, { kind: "player", wx: self.player.x, wy: self.player.y, depth_key: self.player.y + 1 });
+
+        // enemies
+        var n = array_length(self.enemies);
+        for (var i = 0; i < n; i++) {
+            var e = self.enemies[i];
+            array_push(self._packets, {
+                kind: "enemy",
+                wx: e.x,
+                wy: e.y,
+                depth_key: e.y + 3
+            });
+        }
+    };
 }

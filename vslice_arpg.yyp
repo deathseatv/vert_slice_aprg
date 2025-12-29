@@ -37,6 +37,7 @@
     {"id":{"name":"AppBoot","path":"scripts/AppBoot/AppBoot.yy",},},
     {"id":{"name":"AppStateMachine","path":"scripts/AppStateMachine/AppStateMachine.yy",},},
     {"id":{"name":"AssetRegistry","path":"scripts/AssetRegistry/AssetRegistry.yy",},},
+    {"id":{"name":"Combat","path":"scripts/Combat/Combat.yy",},},
     {"id":{"name":"CommandBus","path":"scripts/CommandBus/CommandBus.yy",},},
     {"id":{"name":"ConfigDataLoading","path":"scripts/ConfigDataLoading/ConfigDataLoading.yy",},},
     {"id":{"name":"ConsoleService","path":"scripts/ConsoleService/ConsoleService.yy",},},

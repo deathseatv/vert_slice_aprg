@@ -1,3 +1,4 @@
+// objects/obj_game/Step_0.gml
 var app = global.app;
 
 // Toggle console (always allowed)
@@ -11,6 +12,9 @@ if (app.console.open) {
     if (keyboard_check_pressed(vk_escape)) {
         app.cmd.dispatch({ type: "cmd_close_console" });
     }
+
+    // ensure we don't "stick" attack hold while console is open
+    app.domain.player.attack_hold = false;
 
     // update console input line
     app.console.step();
@@ -36,25 +40,47 @@ if (app.console.open) {
     app.ports.action.impl.step_simulation(1 / room_speed);
     app.domain.build_render_packets();
 } else {
-    // normal gameplay input (view toggle, click-to-move)
+    // normal gameplay input
     if (app.input.pressed("toggle_view")) {
         app.cmd.dispatch({ type: "cmd_toggle_view" });
     }
 
+    // hovered (dead targets filtered by HUD util)
+    var hovered = hud_get_hovered_enemy(app, cam);
+
+    // HOLD: only while LMB is down AND cursor remains on the current target
+    app.domain.player.attack_hold =
+        mouse_check_button(mb_left)
+        && is_struct(hovered)
+        && hovered.id == app.domain.player.act_target_id;
+
+    // CLICK
     if (app.input.mouse_pressed_left()) {
-        app.cmd.dispatch({
-            type: "cmd_click_move",
-            sx: device_mouse_x_to_gui(0),
-            sy: device_mouse_y_to_gui(0),
-            mode: app.view.mode,
-            cam: cam
-        });
+        if (is_struct(hovered)) {
+            // issue order (start or single-slot queue; does not restart current action)
+            combat_player_issue_attack_order(app.domain, hovered.id);
+        } else {
+            // click-to-move cancels combat + queued next action
+            app.domain.player.act_target_id = -1;
+            app.domain.player.attack_cmd = false;
+            app.domain.player.attack_hold = false;
+
+            app.domain.player.queued_attack_cmd = false;
+            app.domain.player.queued_target_id = -1;
+
+            app.cmd.dispatch({
+                type: "cmd_click_move",
+                sx: device_mouse_x_to_gui(0),
+                sy: device_mouse_y_to_gui(0),
+                mode: app.view.mode,
+                cam: cam
+            });
+        }
     }
 
     app.ports.action.impl.step_simulation(1 / room_speed);
     app.domain.build_render_packets();
 }
-
 
 // Camera follows player using read-only query port
 var pos = app.ports.query.impl.get_player_pos();

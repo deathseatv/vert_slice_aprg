@@ -19,6 +19,24 @@ var hud_y = 16;
 var packets = app.ports.render.impl.get_packets();
 app.renderer.draw_packets(packets, cam, app.view.mode);
 
+// ----------------------------
+// Floating unit action text (world -> screen)
+// ----------------------------
+draw_set_color(c_white);
+
+// player
+var p = app.domain.player;
+var ps = combat_world_to_screen(app, cam, p.x, p.y);
+draw_text(ps.x + 10, ps.y - 52, "P " + combat_act_to_text(p.act));
+
+// enemies
+var en = array_length(app.domain.enemies);
+for (var i = 0; i < en; i++) {
+    var e = app.domain.enemies[i];
+    var es = combat_world_to_screen(app, cam, e.x, e.y);
+    draw_text(es.x + 10, es.y - 52, "E" + string(e.id) + " " + combat_act_to_text(e.act));
+}
+
 // Diagnostics overlay
 app.diag.draw(16, 48);
 
@@ -48,7 +66,6 @@ if (app.view.mode == "ortho") {
     var pproj = app.renderer.iso_project(px, py);
     draw_text(16, 288, "Player Screen Iso: " + string(round(pproj.x)) + ", " + string(round(pproj.y)));
 }
-
 
 // ----------------------------
 // Mouse readout (active view only)

@@ -16,6 +16,10 @@ function hud_get_hovered_enemy_from_world(_app, _wx, _wy) {
     var n = array_length(_app.domain.enemies);
     for (var i = 0; i < n; i++) {
         var e = _app.domain.enemies[i];
+
+        // dead targets are not hoverable / highlightable
+        if (e.hp <= 0 || e.act == ACT_DEAD || e.state == ENEMY_STATE_DEAD) continue;
+
         var et = tileutil_world_to_tile(e.x, e.y);
 
         if (et.x == mtx && et.y == mty) {
