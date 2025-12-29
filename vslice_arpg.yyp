@@ -46,6 +46,7 @@
     {"id":{"name":"EnemyAi","path":"scripts/EnemyAi/EnemyAi.yy",},},
     {"id":{"name":"EventBus","path":"scripts/EventBus/EventBus.yy",},},
     {"id":{"name":"FileIoService","path":"scripts/FileIoService/FileIoService.yy",},},
+    {"id":{"name":"HudUtil","path":"scripts/HudUtil/HudUtil.yy",},},
     {"id":{"name":"InputService","path":"scripts/InputService/InputService.yy",},},
     {"id":{"name":"Macros","path":"scripts/Macros/Macros.yy",},},
     {"id":{"name":"NavAStar","path":"scripts/NavAStar/NavAStar.yy",},},

@@ -1,3 +1,4 @@
+// objects/obj_game/Draw_64.gml
 // obj_game : Draw GUI Event
 
 var app = global.app;
@@ -5,6 +6,14 @@ var app = global.app;
 // Clear UI space / header
 draw_text(16, 16, "GAMEPLAY  Esc: Menu  S: Save Slot1  L: Load Slot1");
 draw_text(16, 32, "View: " + app.view.mode + "  P: Toggle");
+
+// ----------------------------
+// HUD: Player HP + hovered enemy HP (pure UI)
+// ----------------------------
+var hud_w = 200;
+var hud_h = 10;
+var hud_x = display_get_gui_width() - (hud_w + 16);
+var hud_y = 16;
 
 // Render consumes render packets only
 var packets = app.ports.render.impl.get_packets();
@@ -29,8 +38,8 @@ var py = pos.y;
 
 draw_text(16, 256, "Player World: " + string(round(px)) + ", " + string(round(py)));
 
-var ptx = floor(px / 32);
-var pty = floor(py / 32);
+var ptx = floor(px / ORTHO_TILE);
+var pty = floor(py / ORTHO_TILE);
 draw_text(16, 272, "Player Tile: " + string(ptx) + ", " + string(pty));
 
 if (app.view.mode == "ortho") {
@@ -54,8 +63,21 @@ if (app.view.mode == "ortho") {
     w = app.proj.screen_to_world_iso(msx, msy, cam);
 }
 
-var mtx = floor(w.x / 32);
-var mty = floor(w.y / 32);
+var hovered = hud_get_hovered_enemy_from_world(app, w.x, w.y);
+
+// Draw HUD after world rendering so it stays on top
+hud_draw_hp_bar(hud_x, hud_y + 32, hud_w, hud_h,
+                app.domain.player.hp, app.domain.player.hp_max,
+                "Player");
+
+if (is_struct(hovered)) {
+    hud_draw_hp_bar(hud_x, hud_y + 64, hud_w, hud_h,
+                    hovered.hp, hovered.hp_max,
+                    "Enemy " + string(hovered.id));
+}
+
+var mtx = floor(w.x / ORTHO_TILE);
+var mty = floor(w.y / ORTHO_TILE);
 
 var base_y = 360;
 draw_text(16, base_y + 0,  "Mouse GUI: " + string(msx) + ", " + string(msy));

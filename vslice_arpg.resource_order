@@ -21,6 +21,7 @@
     {"name":"EnemyAi","order":2,"path":"scripts/EnemyAi/EnemyAi.yy",},
     {"name":"EventBus","order":1,"path":"scripts/EventBus/EventBus.yy",},
     {"name":"FileIoService","order":1,"path":"scripts/FileIoService/FileIoService.yy",},
+    {"name":"HudUtil","order":5,"path":"scripts/HudUtil/HudUtil.yy",},
     {"name":"InputService","order":3,"path":"scripts/InputService/InputService.yy",},
     {"name":"Macros","order":3,"path":"scripts/Macros/Macros.yy",},
     {"name":"NavAStar","order":1,"path":"scripts/NavAStar/NavAStar.yy",},

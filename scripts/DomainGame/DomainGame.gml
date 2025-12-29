@@ -1,3 +1,4 @@
+// scripts/DomainGame/DomainGame.gml
 function DomainGame(_eventbus, _procgen) constructor {
     // Create an explicit reference that will not change
     var domain = self;
@@ -7,7 +8,8 @@ function DomainGame(_eventbus, _procgen) constructor {
 
     domain.seed = 0;
     domain.level = undefined;
-    domain.player = { x: 0, y: 0, vx: 0, vy: 0 };
+    // Player domain data (HP included for HUD slice)
+    domain.player = { x: 0, y: 0, vx: 0, vy: 0, hp: 100, hp_max: 100 };
     domain._packets = [];
 
 	move_queue = [];   // array of {x,y}
@@ -48,6 +50,10 @@ function DomainGame(_eventbus, _procgen) constructor {
             d.player.y = (bp.h * 16);
             d.player.vx = 0;
             d.player.vy = 0;
+
+            // Initialize HP for new runs (HUD slice)
+            d.player.hp_max = 100;
+            d.player.hp = d.player.hp_max;
 
 			d.enemies = [];
 			d._enemy_next_id = 1;
@@ -115,6 +121,10 @@ function DomainGame(_eventbus, _procgen) constructor {
 
 		    var e = {
 		        id: d._enemy_next_id,
+
+		        // HUD slice: HP fields
+		        hp: 30,
+		        hp_max: 30,
 
 		        // world position (pixels)
 		        x: _wx,
