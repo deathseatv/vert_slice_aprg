@@ -1,3 +1,7 @@
+// ================================
+// FILE: objects/obj_game/Draw_64.gml
+// REPLACE ENTIRE FILE WITH THIS
+// ================================
 // objects/obj_game/Draw_64.gml
 // obj_game : Draw GUI Event
 
@@ -80,17 +84,17 @@ if (app.view.mode == "ortho") {
     w = app.proj.screen_to_world_iso(msx, msy, cam);
 }
 
-var hovered = hud_get_hovered_enemy_from_world(app, w.x, w.y);
+var hovered_enemy = hud_get_hovered_enemy_from_world(app, w.x, w.y);
 
 // Draw HUD after world rendering so it stays on top
 hud_draw_hp_bar(hud_x, hud_y + 32, hud_w, hud_h,
                 app.domain.player.hp, app.domain.player.hp_max,
                 "Player");
 
-if (is_struct(hovered)) {
+if (is_struct(hovered_enemy)) {
     hud_draw_hp_bar(hud_x, hud_y + 64, hud_w, hud_h,
-                    hovered.hp, hovered.hp_max,
-                    "Enemy " + string(hovered.id));
+                    hovered_enemy.hp, hovered_enemy.hp_max,
+                    "Enemy " + string(hovered_enemy.id));
 }
 
 var mtx = floor(w.x / ORTHO_TILE);
@@ -101,9 +105,39 @@ draw_text(16, base_y + 0,  "Mouse GUI: " + string(msx) + ", " + string(msy));
 draw_text(16, base_y + 16, "Mouse World (" + app.view.mode + "): " + string(round(w.x)) + ", " + string(round(w.y)));
 draw_text(16, base_y + 32, "Mouse Tile  (" + app.view.mode + "): " + string(mtx) + ", " + string(mty));
 
-// Console overlay on top half
-if (app.console.open) {
+// ----------------------------
+// Inventory UI (left half, solid gray, text list)
+// Toggle: I, Close: I or Esc
+// ----------------------------
+if (app.domain.inventory_open) {
     var gw = display_get_gui_width();
     var gh = display_get_gui_height();
-    app.console.draw_gui(0, 0, gw, gh * 0.5);
+
+    // solid gray rectangle covering left 50%
+    draw_set_color(make_color_rgb(96, 96, 96));
+    draw_rectangle(0, 0, gw * 0.5, gh, false);
+
+    draw_set_color(c_white);
+    draw_text(16, 80, "INVENTORY");
+
+    var inv = app.domain.player.inventory;
+    var inv_y = 104;
+
+    if (!is_array(inv) || array_length(inv) <= 0) {
+        draw_text(16, inv_y, "(empty)");
+    } else {
+        for (var ii = 0; ii < array_length(inv); ii++) {
+            var row = inv[ii];
+            var name = (is_struct(row) && row.name != undefined) ? row.name : "???";
+            draw_text(16, inv_y, "- " + string(name));
+            inv_y += 16;
+        }
+    }
+}
+
+// Console overlay on top half
+if (app.console.open) {
+    var gw2 = display_get_gui_width();
+    var gh2 = display_get_gui_height();
+    app.console.draw_gui(0, 0, gw2, gh2 * 0.5);
 }

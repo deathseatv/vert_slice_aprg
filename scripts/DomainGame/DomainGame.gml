@@ -1,3 +1,7 @@
+// ================================
+// FILE: scripts/DomainGame/DomainGame.gml
+// REPLACE ENTIRE FILE WITH THIS
+// ================================
 // scripts/DomainGame/DomainGame.gml
 function DomainGame(_eventbus, _procgen) constructor {
     // Create an explicit reference that will not change
@@ -31,11 +35,21 @@ function DomainGame(_eventbus, _procgen) constructor {
         // attack windup (interrupt can cancel)
         swing_active: false,
         swing_t: 0,
-        swing_target_id: -1
+        swing_target_id: -1,
+
+        // inventory (persists during play session)
+        inventory: [],
+
+        // item pickup intent (click -> move -> autopick)
+        pickup_target_item_id: -1
     };
+
+    // inventory UI state (toggle with I, close with Esc)
+    domain.inventory_open = false;
 
     domain._packets = [];
 
+    // player movement queue (world points)
     move_queue = [];   // array of {x,y}
     move_active = false;
     move_target = undefined;
@@ -43,6 +57,67 @@ function DomainGame(_eventbus, _procgen) constructor {
     enemies = [];
     _enemy_next_id = 1;
 
+    // world items
+    items = [];
+    _item_next_id = 1;
+
+    // ----------------------------
+    // Helpers (items)
+    // ----------------------------
+    function domain_item_find_index_by_id(_d, _id) {
+        var n = array_length(_d.items);
+        for (var i = 0; i < n; i++) {
+            if (_d.items[i].id == _id) return i;
+        }
+        return -1;
+    }
+
+    function domain_item_remove_at(_d, _idx) {
+        if (_idx < 0) return;
+        array_delete(_d.items, _idx, 1);
+    }
+
+    function domain_player_clear_pickup_intent(_d) {
+        _d.player.pickup_target_item_id = -1;
+    }
+
+    // Build a move queue from A* tile path
+    function domain_set_player_path_from_tiles(_d, _tiles) {
+        _d.move_queue = [];
+        if (!is_array(_tiles) || array_length(_tiles) <= 0) {
+            _d.move_active = false;
+            _d.move_target = undefined;
+            return;
+        }
+
+        for (var i = 0; i < array_length(_tiles); i++) {
+            var t = _tiles[i];
+            var wp = tileutil_tile_to_world_center(t.x, t.y);
+            array_push(_d.move_queue, { x: wp.x, y: wp.y });
+        }
+
+        _d.move_active = true;
+        var last = _d.move_queue[array_length(_d.move_queue) - 1];
+        _d.move_target = { x: last.x, y: last.y };
+    }
+
+    // Convenience: set path to a goal tile using NavAStar
+    function domain_player_pathfind_to_tile(_d, _goal_tx, _goal_ty) {
+        var lvl = _d.level;
+        var nav = _d.navigation;
+        if (!is_struct(lvl)) return false;
+
+        var pt = tileutil_world_to_tile(_d.player.x, _d.player.y);
+        var path = nav_astar_tiles(nav, lvl, pt.x, pt.y, _goal_tx, _goal_ty);
+        if (path == undefined) return false;
+
+        domain_set_player_path_from_tiles(_d, path);
+        return true;
+    }
+
+    // ----------------------------
+    // Ports
+    // ----------------------------
     domain.world_query = {
         parent: domain,
 
@@ -94,10 +169,140 @@ function DomainGame(_eventbus, _procgen) constructor {
             d.player.swing_t = 0;
             d.player.swing_target_id = -1;
 
+            // Inventory init
+            d.player.inventory = [];
+            d.player.pickup_target_item_id = -1;
+            d.inventory_open = false;
+
+            // Items init
+            d.items = [];
+            d._item_next_id = 1;
+
             d.enemies = [];
             d._enemy_next_id = 1;
 
             d.eb.publish("domain:started", { seed: d.seed });
+        },
+
+        // Spawn "rusty sword" on nearest tile center to (_wx,_wy)
+        spawn_item_drop_rusty_sword: function(_wx, _wy) {
+            var d = self.parent;
+
+            var lvl = d.level;
+
+            var nt = tileutil_world_to_nearest_tile(_wx, _wy);
+            var tx = nt.x;
+            var ty = nt.y;
+
+            // clamp to bounds if possible
+            if (is_struct(lvl)) {
+                tx = clamp(tx, 0, lvl.w - 1);
+                ty = clamp(ty, 0, lvl.h - 1);
+            }
+
+            var c = tileutil_tile_to_world_center(tx, ty);
+
+            var it = {
+                id: d._item_next_id,
+                name: "rusty sword",
+                x: c.x,
+                y: c.y,
+                picked: false
+            };
+
+            d._item_next_id += 1;
+            array_push(d.items, it);
+
+            d.eb.publish("domain:item_spawned", { id: it.id, name: it.name, x: it.x, y: it.y });
+        },
+
+        // Begin pickup flow for an item id: immediate if in range else pathfind + auto pickup
+        player_try_pickup_item: function(_item_id) {
+            var d = self.parent;
+
+            var idx = domain_item_find_index_by_id(d, _item_id);
+            if (idx < 0) return false;
+
+            var it = d.items[idx];
+            if (it.picked) return false;
+
+            // Cancel combat orders (clicking item is not an attack)
+            d.player.act_target_id = -1;
+            d.player.attack_cmd = false;
+            d.player.attack_hold = false;
+            d.player.queued_attack_cmd = false;
+            d.player.queued_target_id = -1;
+            d.player.swing_active = false;
+            d.player.swing_t = 0;
+            d.player.swing_target_id = -1;
+
+            var in_range = point_distance(d.player.x, d.player.y, it.x, it.y) <= COMBAT_MELEE_RANGE_PX;
+
+            if (in_range) {
+                // immediate pickup
+                it.picked = true;
+                d.items[idx] = it;
+
+                array_push(d.player.inventory, { name: it.name });
+
+                domain_item_remove_at(d, idx);
+                domain_player_clear_pickup_intent(d);
+
+                d.eb.publish("domain:item_picked", { name: it.name });
+                return true;
+            }
+
+            // Out of range: set pickup intent + pathfind to item tile
+            d.player.pickup_target_item_id = _item_id;
+
+            var goal = tileutil_world_to_tile(it.x, it.y);
+            var ok = domain_player_pathfind_to_tile(d, goal.x, goal.y);
+
+            if (!ok) {
+                // Fallback: direct move target if A* fails (should not happen with can_walk=true)
+                d.actions.set_move_target(it.x, it.y);
+            }
+
+            return true;
+        },
+
+        // Called every step to complete auto-pickup when entering range
+        step_item_pickup_intent: function() {
+            var d = self.parent;
+
+            var _id = d.player.pickup_target_item_id;
+            if (_id < 0) return;
+
+            var idx = domain_item_find_index_by_id(d, _id);
+            if (idx < 0) {
+                domain_player_clear_pickup_intent(d);
+                return;
+            }
+
+            var it = d.items[idx];
+            if (it.picked) {
+                domain_player_clear_pickup_intent(d);
+                return;
+            }
+
+            var in_range = point_distance(d.player.x, d.player.y, it.x, it.y) <= COMBAT_MELEE_RANGE_PX;
+            if (!in_range) return;
+
+            // Auto-pickup on entering range
+            it.picked = true;
+            d.items[idx] = it;
+
+            array_push(d.player.inventory, { name: it.name });
+
+            domain_item_remove_at(d, idx);
+            domain_player_clear_pickup_intent(d);
+
+            // Stop movement once picked up (prevents overshooting / continued path)
+            d.move_queue = [];
+            d.move_active = false;
+            d.move_target = undefined;
+
+            d.eb.publish("domain:item_picked", { name: it.name });
         },
 
         step_simulation: function(_dt) {
@@ -153,6 +358,9 @@ function DomainGame(_eventbus, _procgen) constructor {
                 }
             }
 
+            // --- Item pickup intent resolves AFTER movement ---
+            d.actions.step_item_pickup_intent();
+
             // --- Enemy AI step (must respect ACT_ATTACK/ACT_HIT_RECOVERY/DEAD) ---
             enemyai_step_all(d, _dt);
         },
@@ -160,7 +368,7 @@ function DomainGame(_eventbus, _procgen) constructor {
         set_move_target: function(_wx, _wy) {
             var d = self.parent;
 
-            // Queue structure supports future A* waypoints
+            // Queue structure supports A* waypoints
             d.move_queue = [];
             array_push(d.move_queue, { x: _wx, y: _wy });
             d.move_active = true;
@@ -215,7 +423,10 @@ function DomainGame(_eventbus, _procgen) constructor {
 
                 // attack windup (interrupt can cancel)
                 swing_active: false,
-                swing_t: 0
+                swing_t: 0,
+
+                // item drop flag
+                drop_done: false
             };
 
             d._enemy_next_id += 1;
@@ -270,11 +481,16 @@ function DomainGame(_eventbus, _procgen) constructor {
 
         if (is_struct(self.level)) {
             var step = 32;
-            for (var yy = 0; yy <= self.level.h * step; yy += step) {
-                for (var xx = 0; xx <= self.level.w * step; xx += step) {
-                    array_push(self._packets, { kind: "tile", wx: xx + 16, wy: yy + 16, depth_key: yy });
-                }
-            }
+            for (var ty_px = 0; ty_px <= self.level.h * step; ty_px += step) {
+			    for (var tx_px = 0; tx_px <= self.level.w * step; tx_px += step) {
+			        array_push(self._packets, {
+			            kind: "tile",
+			            wx: tx_px + 16,
+			            wy: ty_px + 16,
+			            depth_key: ty_px
+			        });
+			    }
+			}
         }
 
         if (is_struct(move_target)) {
@@ -297,6 +513,22 @@ function DomainGame(_eventbus, _procgen) constructor {
                 wx: e.x,
                 wy: e.y,
                 depth_key: e.y + 3
+            });
+        }
+
+        // items
+        var m = array_length(self.items);
+        for (var j = 0; j < m; j++) {
+            var it = self.items[j];
+            if (it == undefined) continue;
+            if (it.picked) continue;
+
+            array_push(self._packets, {
+                kind: "item",
+                wx: it.x,
+                wy: it.y,
+                name: it.name,
+                depth_key: it.y + 2
             });
         }
     };

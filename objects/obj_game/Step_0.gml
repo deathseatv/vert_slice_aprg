@@ -1,3 +1,7 @@
+// ================================
+// FILE: objects/obj_game/Step_0.gml
+// REPLACE ENTIRE FILE WITH THIS
+// ================================
 // objects/obj_game/Step_0.gml
 var app = global.app;
 
@@ -40,42 +44,67 @@ if (app.console.open) {
     app.ports.action.impl.step_simulation(1 / room_speed);
     app.domain.build_render_packets();
 } else {
+    // ----------------------------
+    // Inventory UI input
+    // ----------------------------
+    if (app.input.pressed("toggle_inventory")) {
+        app.domain.inventory_open = !app.domain.inventory_open;
+    }
+    if (app.domain.inventory_open && keyboard_check_pressed(vk_escape)) {
+        app.domain.inventory_open = false;
+    }
+
     // normal gameplay input
     if (app.input.pressed("toggle_view")) {
         app.cmd.dispatch({ type: "cmd_toggle_view" });
     }
 
-    // hovered (dead targets filtered by HUD util)
-    var hovered = hud_get_hovered_enemy(app, cam);
+    // If inventory is open: no world clicking / combat / pickup
+    if (!app.domain.inventory_open) {
+        // Hovered entities
+        var hovered_item = hud_get_hovered_item(app, cam);
+        var hovered_enemy = hud_get_hovered_enemy(app, cam);
 
-    // HOLD: only while LMB is down AND cursor remains on the current target
-    app.domain.player.attack_hold =
-        mouse_check_button(mb_left)
-        && is_struct(hovered)
-        && hovered.id == app.domain.player.act_target_id;
+        // HOLD: only while LMB is down AND cursor remains on the current target
+        app.domain.player.attack_hold =
+            mouse_check_button(mb_left)
+            && is_struct(hovered_enemy)
+            && hovered_enemy.id == app.domain.player.act_target_id;
 
-    // CLICK
-    if (app.input.mouse_pressed_left()) {
-        if (is_struct(hovered)) {
-            // issue order (start or single-slot queue; does not restart current action)
-            combat_player_issue_attack_order(app.domain, hovered.id);
-        } else {
-            // click-to-move cancels combat + queued next action
-            app.domain.player.act_target_id = -1;
-            app.domain.player.attack_cmd = false;
-            app.domain.player.attack_hold = false;
+        // CLICK
+        if (app.input.mouse_pressed_left()) {
+            // Priority 1: items
+            if (is_struct(hovered_item)) {
+                app.ports.action.impl.player_try_pickup_item(hovered_item.id);
+            }
+            // Priority 2: enemies
+            else if (is_struct(hovered_enemy)) {
+                combat_player_issue_attack_order(app.domain, hovered_enemy.id);
+            }
+            // Priority 3: click-to-move
+            else {
+                // click-to-move cancels combat + queued next action + pickup intent
+                app.domain.player.act_target_id = -1;
+                app.domain.player.attack_cmd = false;
+                app.domain.player.attack_hold = false;
 
-            app.domain.player.queued_attack_cmd = false;
-            app.domain.player.queued_target_id = -1;
+                app.domain.player.queued_attack_cmd = false;
+                app.domain.player.queued_target_id = -1;
 
-            app.cmd.dispatch({
-                type: "cmd_click_move",
-                sx: device_mouse_x_to_gui(0),
-                sy: device_mouse_y_to_gui(0),
-                mode: app.view.mode,
-                cam: cam
-            });
+                app.domain.player.pickup_target_item_id = -1;
+
+                app.cmd.dispatch({
+                    type: "cmd_click_move",
+                    sx: device_mouse_x_to_gui(0),
+                    sy: device_mouse_y_to_gui(0),
+                    mode: app.view.mode,
+                    cam: cam
+                });
+            }
         }
+    } else {
+        // Inventory open: ensure we don't stick attack hold
+        app.domain.player.attack_hold = false;
     }
 
     app.ports.action.impl.step_simulation(1 / room_speed);
