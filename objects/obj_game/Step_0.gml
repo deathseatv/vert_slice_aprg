@@ -30,41 +30,7 @@ if (app.console.open) {
         app.console.input_line = "";
     }
 
-    // BRIDGE: consume pending_spawn right here (guaranteed to run)
-    if (is_struct(app.console.pending_spawn)) {
-        var req = app.console.pending_spawn;
-        app.console.pending_spawn = undefined;
-
-        app.cmd.dispatch({ type: "cmd_spawn_enemy", tx: req.tx, ty: req.ty });
-        app.console.print("Bridged spawn enemy " + string(req.tx) + " " + string(req.ty));
-        app.diag.log("Bridged spawn enemy " + string(req.tx) + " " + string(req.ty));
-    }
-
-
-    // BRIDGE: consume pending_give right here (guaranteed to run)
-    if (is_struct(app.console.pending_give)) {
-        var reqg = app.console.pending_give;
-        app.console.pending_give = undefined;
-
-        app.cmd.dispatch({ type: "cmd_give_item", target: reqg.target, item: reqg.item, count: reqg.count });
-        app.console.print("Bridged give " + string(reqg.target) + " " + string(reqg.item) + " " + string(reqg.count));
-        app.diag.log("Bridged give " + string(reqg.target) + " " + string(reqg.item) + " " + string(reqg.count));
-    }
-
-
-    // BRIDGE: consume pending_give right here (guaranteed to run)
-    if (is_struct(app.console.pending_give)) {
-        var reqg = app.console.pending_give;
-        app.console.pending_give = undefined;
-
-        app.cmd.dispatch({ type: "cmd_give_item", target: reqg.target, item: reqg.item, count: reqg.count });
-        app.console.print("Bridged give " + string(reqg.target) + " " + string(reqg.item) + " " + string(reqg.count));
-        app.diag.log("Bridged give " + string(reqg.target) + " " + string(reqg.item) + " " + string(reqg.count));
-    }
-
-    // simulation continues
-    app.ports.action.impl.step_simulation(1 / room_speed);
-    app.domain.build_render_packets();
+    // NOTE: console pending_* bridging is handled ONLY by AppBoot.
 } else {
     // ----------------------------
     // Inventory toggle (I) + close (Esc)
@@ -90,6 +56,9 @@ if (app.console.open) {
             app.domain.inv_scroll_offset_px = 0;
             app.domain.inv_drag_active = false;
             app.domain.inv_drag_moved = false;
+
+            // Suppress gameplay/menu Escape handlers in the same frame as UI close.
+            if (is_callable(app.set_frame_console_captured)) app.set_frame_console_captured(true);
         }
     }
     if (app.domain.inventory_open && keyboard_check_pressed(vk_escape)) {
@@ -109,6 +78,9 @@ if (app.console.open) {
         app.domain.inv_scroll_offset_px = 0;
         app.domain.inv_drag_active = false;
         app.domain.inv_drag_moved = false;
+
+        // Suppress gameplay/menu Escape handlers in the same frame as UI close.
+        if (is_callable(app.set_frame_console_captured)) app.set_frame_console_captured(true);
     }
 
     // normal gameplay input
@@ -406,10 +378,15 @@ if (app.console.open) {
             });
         }
     }
-
-    app.ports.action.impl.step_simulation(1 / room_speed);
-    app.domain.build_render_packets();
 }
+
+// ------------------------------------------------------------
+// Phase 1: Authoritative per-frame orchestrator
+// - Runs simulation step
+// - Builds render packets
+// - Bridges console pending_* into commands (AppBoot-only)
+// ------------------------------------------------------------
+app.step();
 
 // Camera follows player using read-only query port
 var pos = app.ports.query.impl.get_player_pos();

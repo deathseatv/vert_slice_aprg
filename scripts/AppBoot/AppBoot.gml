@@ -1,4 +1,6 @@
 function AppBoot() constructor {
+    // stable self reference for closures
+    var app = self;
     // Infrastructure
     cfg = new ConfigDataLoading();
     assets = new AssetRegistry();
@@ -132,13 +134,21 @@ function AppBoot() constructor {
 	});
 
 	cmd.register("cmd_toggle_console", function(_c) {
+	    var was_open = console.open;
 	    console.toggle();
 	    if (console.open) eb.publish("ui:console_opened", {});
-	    else eb.publish("ui:console_closed", {});
+	    else {
+	        eb.publish("ui:console_closed", {});
+	        // If the console was open and is now closed, latch capture for this frame
+	        // so other systems (menu/gameplay) don't also consume Escape this frame.
+		        if (was_open) set_frame_console_captured(true);
+	    }
 	});
 
 	cmd.register("cmd_close_console", function(_c) {
 	    if (console.open) {
+	        // Latch capture for this frame even though console.open will become false.
+		        set_frame_console_captured(true);
 	        console.close();
 	        eb.publish("ui:console_closed", {});
 	    }
@@ -217,20 +227,49 @@ function AppBoot() constructor {
         sm.set(states.menu);
     };
 
-	step = function() {
-	    time.step();
-	    sm.step();
+    // ------------------------------------------------------------
+    // Phase 1: Single authoritative per-frame orchestrator
+    // ------------------------------------------------------------
+    // Order (must not change):
+    //  1) input update
+    //  2) console bridge (pending_* -> commands)
+    //  3) domain invariants check (Phase 2 hook)
+    //  4) command processing (state machine step)
+    //  5) simulation step
+    //  6) render packet build
 
-	    // Console -> Command bridge
-	    if (is_struct(console.pending_spawn)) {
-	        var req = console.pending_spawn;
-	        console.pending_spawn = undefined;
+    // Latched when a console-close action occurred (used to suppress gameplay/menu actions
+    // in the same frame even if console.open becomes false before AppBoot.step runs).
+    _console_capture_latch = false;
 
-	        diag.log("Bridge spawn tx=" + string(req.tx) + " ty=" + string(req.ty));
-	        console.print("Bridge dispatch cmd_spawn_enemy " + string(req.tx) + " " + string(req.ty));
+    // Guard: AppBoot.step may be called from more than one object (e.g. obj_boot and obj_game).
+    // Prevent double simulation / double console-bridge in the same rendered frame.
+    _last_step_frame_id = -1;
 
-	        cmd.dispatch({ type: "cmd_spawn_enemy", tx: req.tx, ty: req.ty });
-	    }
+    // Kept as a public helper for other code paths (OR semantics).
+    set_frame_console_captured = function(_v) {
+        _console_capture_latch = (_console_capture_latch || _v);
+    };
+
+    _input_update = function() {
+        // InputService is stateless today, but keep the phase to make ordering explicit.
+        // Use dynamic lookup to avoid reading missing struct members.
+        var fn = input[$ "update"];
+        if (is_callable(fn)) { fn(); return; }
+        fn = input[$ "step"];
+        if (is_callable(fn)) { fn(); return; }
+    };
+
+    _console_bridge = function() {
+        // AppBoot is the ONLY place that consumes pending_* requests.
+        if (is_struct(console.pending_spawn)) {
+            var req = console.pending_spawn;
+            console.pending_spawn = undefined;
+
+            diag.log("Bridge spawn tx=" + string(req.tx) + " ty=" + string(req.ty));
+            console.print("Bridge dispatch cmd_spawn_enemy " + string(req.tx) + " " + string(req.ty));
+            cmd.dispatch({ type: "cmd_spawn_enemy", tx: req.tx, ty: req.ty });
+        }
 
         if (is_struct(console.pending_give)) {
             var req2 = console.pending_give;
@@ -238,10 +277,62 @@ function AppBoot() constructor {
 
             diag.log("Bridge give target=" + string(req2.target) + " item=" + string(req2.item) + " count=" + string(req2.count));
             console.print("Bridge dispatch cmd_give_item " + string(req2.target) + " " + string(req2.item) + " " + string(req2.count));
-
             cmd.dispatch({ type: "cmd_give_item", target: req2.target, item: req2.item, count: req2.count });
         }
-	};
+    };
+
+    _domain_invariants_check = function() {
+        // Phase 2 hook (no-op until implemented).
+        var fn = domain[$ "invariants_check"];
+        if (is_callable(fn)) fn();
+    };
+
+    _command_processing = function() {
+        // No gameplay behavior should depend on console-open state except input capture.
+        // If console is open OR we latched capture this frame, suppress state machine input.
+        if (console.open || _console_capture_latch) return;
+        sm.step();
+    };
+
+    _simulation_step = function(_dt) {
+        // Only step when gameplay exists (level generated/loaded).
+        if (!is_struct(domain.level)) return;
+        ports.action.impl.step_simulation(_dt);
+    };
+
+    _render_packet_build = function() {
+        // Safe even when level is undefined.
+        domain.build_render_packets();
+    };
+
+    step = function() {
+        // Frame-id derived from wall clock to be stable within a single engine frame.
+        // (Avoids running twice if multiple instances call global.app.step in the same Step.)
+        var _fps = max(1, room_speed);
+        var _frame_id = floor(current_time / (1000 / _fps));
+        if (_frame_id == _last_step_frame_id) return;
+        _last_step_frame_id = _frame_id;
+
+        var dt = 1 / room_speed;
+
+        // 1) input update
+        _input_update();
+        time.step();
+
+        // 2) console bridge
+        _console_bridge();
+        // 3) invariants
+        _domain_invariants_check();
+        // 4) command processing
+        _command_processing();
+        // 5) simulation
+        _simulation_step(dt);
+        // 6) render packets
+        _render_packet_build();
+
+        // Reset latch at end (if it was set after this step, it will be cleared next frame).
+        _console_capture_latch = false;
+    };
 
 
 
