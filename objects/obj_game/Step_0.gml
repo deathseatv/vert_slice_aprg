@@ -102,8 +102,14 @@ if (app.console.open) {
 
     // Execute any world intent produced by UI (simulation action stays here)
     if (is_struct(ui_out.intent)) {
-        if (ui_out.intent.type == "inv_drop_item_near_player_named") {
-            app.ports.action.impl.spawn_item_drop_near_player_named(ui_out.intent.name);
+        if (ui_out.intent.type == "inv_drop_item_at_cursor_named") {
+            // Drop is player-centric (ignore click position): nearest unoccupied tile to player
+            app.ports.action.impl.spawn_item_drop_at_world_named(
+                ui_out.intent.name,
+                app.domain.player.x,
+                app.domain.player.y,
+                true
+            );
         }
     }
 

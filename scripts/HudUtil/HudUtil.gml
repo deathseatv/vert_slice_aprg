@@ -200,7 +200,9 @@ function invui_get_controller() {
                         if (is_struct(_app.domain.carry_item) && _app.domain.carry_item.name != undefined) nm = _app.domain.carry_item.name;
 
                         // Output intent; obj_game performs simulation action.
-                        out.intent = { type: "inv_drop_item_near_player_named", name: nm };
+                        // Include GUI mouse coords so the simulation can deterministically
+                        // translate cursor -> world -> tile center.
+                        out.intent = { type: "inv_drop_item_at_cursor_named", name: nm, sx: msx, sy: msy };
 
                         _app.domain.carry_active = false;
                         _app.domain.carry_item = undefined;

@@ -180,6 +180,61 @@ domain.carry_original_index = -1;
         return true;
     }
 
+    /// Returns true if any unpicked world item occupies tile (_tx,_ty).
+    /// Only reads from the passed-in array; does not capture domain state.
+    function domain_tile_has_unpicked_item_on_tile(_items, _tx, _ty) {
+        var n = array_length(_items);
+        for (var i = 0; i < n; i++) {
+            var it = _items[i];
+            if (it.picked) continue;
+
+            var t2 = tileutil_world_to_nearest_tile(it.x, it.y);
+            if (t2.x == _tx && t2.y == _ty) return true;
+        }
+        return false;
+    }
+
+    /// Finds the nearest unoccupied tile to (_start_tx,_start_ty) using Chebyshev rings.
+    /// "Unoccupied" means no unpicked world item already on that tile.
+    /// Returns { x: tx, y: ty }.
+    function domain_find_nearest_unoccupied_tile(_items, _lvl, _start_tx, _start_ty, _max_r) {
+        var start_tx = _start_tx;
+        var start_ty = _start_ty;
+
+        if (is_struct(_lvl)) {
+            start_tx = clamp(start_tx, 0, _lvl.w - 1);
+            start_ty = clamp(start_ty, 0, _lvl.h - 1);
+        }
+
+        // Fast path
+        if (!domain_tile_has_unpicked_item_on_tile(_items, start_tx, start_ty)) {
+            return { x: start_tx, y: start_ty };
+        }
+
+        var max_r = max(0, floor(_max_r));
+        for (var r = 1; r <= max_r; r++) {
+            for (var dy = -r; dy <= r; dy++) {
+                for (var dx = -r; dx <= r; dx++) {
+                    if (max(abs(dx), abs(dy)) != r) continue;
+
+                    var tx = start_tx + dx;
+                    var ty = start_ty + dy;
+
+                    if (is_struct(_lvl)) {
+                        if (tx < 0 || ty < 0 || tx >= _lvl.w || ty >= _lvl.h) continue;
+                    }
+
+                    if (!domain_tile_has_unpicked_item_on_tile(_items, tx, ty)) {
+                        return { x: tx, y: ty };
+                    }
+                }
+            }
+        }
+
+        // Fallback: return start tile even if occupied
+        return { x: start_tx, y: start_ty };
+    }
+
     // ----------------------------
     // Ports
     // ----------------------------
@@ -303,6 +358,39 @@ spawn_item_drop_named: function(_name, _wx, _wy) {
     return it.id;
 },
 
+// Drop an item on the tile under the given world position.
+// If _avoid_overlap is true, performs an explicit occupancy check against the items array
+// and finds the nearest free tile (Chebyshev rings) if the cursor tile is occupied.
+spawn_item_drop_at_world_named: function(_name, _wx, _wy, _avoid_overlap) {
+    var d = self.parent;
+
+    if (_avoid_overlap == undefined) _avoid_overlap = true;
+
+    // Ensure items storage exists
+    if (!variable_struct_exists(d, "items") || !is_array(d.items)) d.items = [];
+    if (!variable_struct_exists(d, "_item_next_id")) d._item_next_id = 1;
+
+    var lvl = d.level;
+    var nt = tileutil_world_to_nearest_tile(_wx, _wy);
+    var tx = nt.x;
+    var ty = nt.y;
+
+    if (is_struct(lvl)) {
+        tx = clamp(tx, 0, lvl.w - 1);
+        ty = clamp(ty, 0, lvl.h - 1);
+    }
+
+    if (_avoid_overlap) {
+        var items_arr = d.items;
+        var best = domain_find_nearest_unoccupied_tile(items_arr, lvl, tx, ty, 32);
+        tx = best.x;
+        ty = best.y;
+    }
+
+    var c = tileutil_tile_to_world_center(tx, ty);
+    return self.spawn_item_drop_named(_name, c.x, c.y);
+},
+
 // Drop an item near the player: nearest unoccupied tile to player (Chebyshev rings).
 // Unoccupied means: no unpicked world item already on that tile.
 spawn_item_drop_near_player_named: function(_name) {
@@ -318,58 +406,10 @@ spawn_item_drop_near_player_named: function(_name) {
     var start_tx = pt.x;
     var start_ty = pt.y;
 
-    // Helper (no closure): checks occupancy by tile coords against an items array
-    function tile_has_item_in_array(_items, _tx, _ty) {
-        var n = array_length(_items);
-        for (var i = 0; i < n; i++) {
-            var it = _items[i];
-            if (it.picked) continue;
-
-            var t2 = tileutil_world_to_nearest_tile(it.x, it.y);
-            if (t2.x == _tx && t2.y == _ty) return true;
-        }
-        return false;
-    }
-
-    // Clamp starting point
-    if (is_struct(lvl)) {
-        start_tx = clamp(start_tx, 0, lvl.w - 1);
-        start_ty = clamp(start_ty, 0, lvl.h - 1);
-    }
-
-    // Snapshot items array reference once (avoid scope/closure issues)
+    // Find nearest unoccupied tile around player tile (ring search), explicit args.
     var items_arr = d.items;
-
-    // Find nearest unoccupied tile
-    var found = false;
-    var best_tx = start_tx;
-    var best_ty = start_ty;
-
-    // Limit search to avoid infinite loops in degenerate cases
-    var max_r = 32;
-    for (var r = 0; r <= max_r && !found; r++) {
-        // iterate ring perimeter for Chebyshev radius r
-        for (var dy = -r; dy <= r && !found; dy++) {
-            for (var dx = -r; dx <= r && !found; dx++) {
-                if (max(abs(dx), abs(dy)) != r) continue;
-
-                var tx = start_tx + dx;
-                var ty = start_ty + dy;
-
-                if (is_struct(lvl)) {
-                    if (tx < 0 || ty < 0 || tx >= lvl.w || ty >= lvl.h) continue;
-                }
-
-                if (!tile_has_item_in_array(items_arr, tx, ty)) {
-                    best_tx = tx;
-                    best_ty = ty;
-                    found = true;
-                }
-            }
-        }
-    }
-
-    var c = tileutil_tile_to_world_center(best_tx, best_ty);
+    var best = domain_find_nearest_unoccupied_tile(items_arr, lvl, start_tx, start_ty, 32);
+    var c = tileutil_tile_to_world_center(best.x, best.y);
 
     var it = {
         id: d._item_next_id,

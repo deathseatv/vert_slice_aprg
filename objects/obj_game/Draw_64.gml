@@ -30,9 +30,16 @@ hud_draw_hp_bar(hud_x, hud_y + 32, hud_w, hud_h,
 
 // Hovered enemy HP (if any)
 if (is_struct(hovered_enemy)) {
+    // Some enemy structs may not include a display name; avoid "field not set" crashes.
+    var enemy_label = "Enemy";
+    if (variable_struct_exists(hovered_enemy, "name")) enemy_label = hovered_enemy.name;
+    else if (variable_struct_exists(hovered_enemy, "title")) enemy_label = hovered_enemy.title;
+    else if (variable_struct_exists(hovered_enemy, "kind")) enemy_label = string(hovered_enemy.kind);
+    else if (variable_struct_exists(hovered_enemy, "type")) enemy_label = string(hovered_enemy.type);
+
     hud_draw_hp_bar(hud_x, hud_y + 64, hud_w, hud_h,
                     hovered_enemy.hp, hovered_enemy.hp_max,
-                    hovered_enemy.name);
+                    enemy_label);
 }
 
 // Inventory UI (controller draw)
