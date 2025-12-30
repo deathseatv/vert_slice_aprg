@@ -73,6 +73,60 @@ domain.carry_original_index = -1;
     _item_next_id = 1;
 
     // ----------------------------
+    // Phase 2: Domain invariant gate
+    // ----------------------------
+    // Safe to call every frame; only assigns when something is missing/wrong.
+    // Goal: prevent "field not set before reading" crashes at the source.
+    invariants_check = function() {
+        var d = self;
+
+        // Ensure root collections
+        if (!is_array(d.items)) d.items = [];
+        if (!is_array(d.enemies)) d.enemies = [];
+
+        // Ensure player struct exists (minimal fallback)
+        if (!is_struct(d.player)) {
+            d.player = {
+                x: 0, y: 0, vx: 0, vy: 0,
+                hp: 100, hp_max: 100,
+                act: ACT_IDLE,
+                act_target_id: -1,
+                atk_cd_t: 0,
+                hitrec_t: 0,
+                attack_cmd: false,
+                attack_hold: false,
+                queued_attack_cmd: false,
+                queued_target_id: -1,
+                swing_active: false,
+                swing_t: 0,
+                swing_target_id: -1,
+                inventory: [],
+                pickup_target_item_id: -1
+            };
+        } else {
+            // Ensure player.inventory exists and is an array
+            if (!is_array(d.player.inventory)) d.player.inventory = [];
+        }
+
+        // Inventory UI state relied on by UI/input
+        if (!is_bool(d.inventory_open)) d.inventory_open = false;
+        if (!is_real(d.inv_scroll_offset_px)) d.inv_scroll_offset_px = 0;
+        if (!is_bool(d.inv_drag_active)) d.inv_drag_active = false;
+        if (!is_real(d.inv_drag_start_mouse_y)) d.inv_drag_start_mouse_y = 0;
+        if (!is_real(d.inv_drag_start_scroll_offset)) d.inv_drag_start_scroll_offset = d.inv_scroll_offset_px;
+        if (!is_real(d.inv_drag_threshold_px)) d.inv_drag_threshold_px = 6;
+
+        if (!is_bool(d.carry_active)) d.carry_active = false;
+        if (!variable_struct_exists(d, "carry_item")) d.carry_item = undefined;
+        if (!is_real(d.carry_original_index)) d.carry_original_index = -1;
+
+        // Core movement fields
+        if (!is_array(d.move_queue)) d.move_queue = [];
+        if (!is_bool(d.move_active)) d.move_active = false;
+        if (!variable_struct_exists(d, "move_target")) d.move_target = undefined;
+    };
+
+    // ----------------------------
     // Helpers (items)
     // ----------------------------
     function domain_item_find_index_by_id(_d, _id) {
