@@ -268,7 +268,18 @@ function combat_step_player(_d, _dt) {
             if (!(hit_e.hp <= 0 || hit_e.act == ACT_DEAD || hit_e.state == ENEMY_STATE_DEAD)) {
                 if (combat_in_melee_range(p.x, p.y, hit_e.x, hit_e.y)) {
                     // Apply damage (enemy may die -> drops item)
-                    combat_apply_damage_to_enemy(_d, hit_e, COMBAT_DAMAGE_MELEE);
+                    // Compute damage (weapon slot bonus)
+                    var dmg = COMBAT_DAMAGE_MELEE;
+                    if (is_struct(_d.player) && is_struct(_d.player.equipment) && is_struct(_d.player.equipment.weapon)) {
+                        var wn = "";
+                        if (variable_struct_exists(_d.player.equipment.weapon, "name") && _d.player.equipment.weapon.name != undefined) {
+                            wn = string_lower(string(_d.player.equipment.weapon.name));
+                        }
+                        // Minimal tuning: swords hit harder
+                        if (string_pos("sword", wn) > 0) dmg += 2;
+                    }
+
+                    combat_apply_damage_to_enemy(_d, hit_e, dmg);
 
                     // Write-back enemy struct (since we modified local)
                     _d.enemies[hit_i] = hit_e;

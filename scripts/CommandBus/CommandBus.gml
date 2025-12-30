@@ -32,7 +32,25 @@ function CommandBus() constructor {
         };
     };
 
-    cmd_pickup_item = function(_item_id) {
+    
+
+    cmd_equip_item_named = function(_name, _opts) {
+        // _opts optional:
+        //  - index: inventory index (disambiguate duplicates)
+        //  - toggle: bool (default true)
+        if (!is_struct(_opts)) _opts = {};
+        var idx = undefined;
+        var tog = true;
+        if (variable_struct_exists(_opts, "index")) idx = _opts.index;
+        if (variable_struct_exists(_opts, "toggle")) tog = _opts.toggle;
+
+        return { type: "cmd_equip_item_named", name: _name, index: idx, toggle: tog };
+    };
+
+    cmd_unequip_item_named = function(_name) {
+        return { type: "cmd_unequip_item_named", name: _name };
+    };
+cmd_pickup_item = function(_item_id) {
         return { type: "cmd_pickup_item", item_id: _item_id };
     };
 

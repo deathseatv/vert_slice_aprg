@@ -68,6 +68,8 @@ domain.carry_original_index = -1;
     enemies = [];
     _enemy_next_id = 1;
 
+
+    _inv_uid_next = 1; // unique ids for inventory entries
     // world items
     items = [];
     _item_next_id = 1;
@@ -101,11 +103,40 @@ domain.carry_original_index = -1;
                 swing_t: 0,
                 swing_target_id: -1,
                 inventory: [],
+                // equipment (Phase 6)
+                equipment: { weapon: undefined },
                 pickup_target_item_id: -1
             };
         } else {
             // Ensure player.inventory exists and is an array
             if (!is_array(d.player.inventory)) d.player.inventory = [];
+
+            // Ensure player equipment slot struct exists
+            if (!variable_struct_exists(d.player, "equipment") || !is_struct(d.player.equipment)) {
+                d.player.equipment = { weapon: undefined };
+            } else {
+                if (!variable_struct_exists(d.player.equipment, "weapon")) d.player.equipment.weapon = undefined;
+            }
+
+            // Ensure inventory entry uids exist (assigned lazily)
+            if (!variable_struct_exists(d, "_inv_uid_next") || d._inv_uid_next == undefined) d._inv_uid_next = 1;
+            if (is_array(d.player.inventory)) {
+                var _ninv = array_length(d.player.inventory);
+                for (var _ii = 0; _ii < _ninv; _ii++) {
+                    var _it = d.player.inventory[_ii];
+                    if (is_struct(_it)) {
+                        if (!variable_struct_exists(_it, "uid") || _it.uid == undefined) {
+                            _it.uid = d._inv_uid_next;
+                            d._inv_uid_next += 1;
+                            d.player.inventory[_ii] = _it;
+                        }
+                    } else {
+                        // normalize non-struct entries
+                        d.player.inventory[_ii] = { name: string(_it), uid: d._inv_uid_next };
+                        d._inv_uid_next += 1;
+                    }
+                }
+            }
         }
 
         // Inventory UI state relied on by UI/input
@@ -458,12 +489,120 @@ give_player_items: function(_item_token, _count) {
     if (tok == "rustysword") tok = "rusty sword";
 
     for (var k = 0; k < count; k++) {
-        array_push(d.player.inventory, { name: tok });
+        array_push(d.player.inventory, { name: tok, uid: d._inv_uid_next });
+        d._inv_uid_next += 1;
     }
 
     d.eb.publish("domain:inventory_changed", { added: tok, count: count });
     return count;
 },
+
+// Equip an inventory entry into the weapon slot.
+// _item_token: string name
+// _index: optional inventory index to disambiguate duplicates
+// _toggle: if true, equips if not equipped; unequips if currently equipped and matches
+equip_item_named: function(_item_token, _index, _toggle) {
+    var d = self.parent;
+    d.invariants_check();
+
+    var tok = string_lower(string(_item_token));
+    tok = string_replace_all(tok, "_", " ");
+    tok = string_replace_all(tok, "-", " ");
+    tok = string_trim(tok);
+
+    // ensure equipment exists
+    if (!is_struct(d.player.equipment)) d.player.equipment = { weapon: undefined };
+
+    // Toggle off if currently equipped and matches token (best-effort)
+    if (_toggle) {
+        var w = d.player.equipment.weapon;
+        if (is_struct(w) && w.name != undefined) {
+            var wn = string_lower(string(w.name));
+            if (wn == tok) {
+                return self.unequip_item_named(tok);
+            }
+        }
+    }
+
+    var inv = d.player.inventory;
+    if (!is_array(inv) || array_length(inv) <= 0) return false;
+
+    var pick_i = -1;
+
+    // Prefer exact index if provided and matches
+    if (_index != undefined) {
+        var ii = floor(_index);
+        if (ii >= 0 && ii < array_length(inv)) {
+            var cand = inv[ii];
+            var cn = (is_struct(cand) && cand.name != undefined) ? string_lower(string(cand.name)) : string_lower(string(cand));
+            if (cn == tok) pick_i = ii;
+        }
+    }
+
+    // Fallback: first matching name
+    if (pick_i < 0) {
+        for (var i = 0; i < array_length(inv); i++) {
+            var it = inv[i];
+            var nm = (is_struct(it) && it.name != undefined) ? string_lower(string(it.name)) : string_lower(string(it));
+            if (nm == tok) { pick_i = i; break; }
+        }
+    }
+
+    if (pick_i < 0) return false;
+
+    var item = inv[pick_i];
+    array_delete(inv, pick_i, 1);
+    d.player.inventory = inv;
+
+    // If slot occupied, unequip current weapon back into inventory (append)
+    if (is_struct(d.player.equipment.weapon)) {
+        array_push(d.player.inventory, d.player.equipment.weapon);
+    }
+
+    if (!is_struct(item)) item = { name: string(item) };
+    // ensure uid
+    if (!variable_struct_exists(item, "uid") || item.uid == undefined) {
+        item.uid = d._inv_uid_next;
+        d._inv_uid_next += 1;
+    }
+
+    d.player.equipment.weapon = item;
+
+    d.eb.publish("domain:equipment_changed", { slot: "weapon", name: item.name, uid: item.uid });
+    d.eb.publish("domain:inventory_changed", { equipped: item.name });
+
+    return true;
+},
+
+// Unequip weapon back into inventory. If _name provided, only unequip if it matches.
+unequip_item_named: function(_name) {
+    var d = self.parent;
+    d.invariants_check();
+
+    if (!is_struct(d.player.equipment)) d.player.equipment = { weapon: undefined };
+
+    var w = d.player.equipment.weapon;
+    if (!is_struct(w)) return false;
+
+    if (_name != undefined) {
+        var tok = string_lower(string(_name));
+        tok = string_replace_all(tok, "_", " ");
+        tok = string_replace_all(tok, "-", " ");
+        tok = string_trim(tok);
+
+        var wn = (w.name != undefined) ? string_lower(string(w.name)) : "";
+        if (wn != tok) return false;
+    }
+
+    array_push(d.player.inventory, w);
+    d.player.equipment.weapon = undefined;
+
+    d.eb.publish("domain:equipment_changed", { slot: "weapon", name: undefined });
+    d.eb.publish("domain:inventory_changed", { unequipped: true });
+
+    return true;
+},
+
 
         // Begin pickup flow for an item id: immediate if in range else pathfind + auto pickup
         player_try_pickup_item: function(_item_id) {
@@ -492,7 +631,7 @@ give_player_items: function(_item_token, _count) {
                 it.picked = true;
                 d.items[idx] = it;
 
-                array_push(d.player.inventory, { name: it.name });
+                array_push(d.player.inventory, { name: it.name, uid: it.id });
 
                 domain_item_remove_at(d, idx);
                 domain_player_clear_pickup_intent(d);

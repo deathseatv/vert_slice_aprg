@@ -105,6 +105,9 @@ if (app.console.open) {
         // Inventory drop is player-centric (Phase 4): ignore cursor position.
         if (ui_out.intent.type == "inv_drop_item_at_cursor_named") {
             app.cmd.dispatch(app.cmd.cmd_drop_item_named(ui_out.intent.name, { mode: "near_player" }));
+		}
+        else if (ui_out.intent.type == "inv_toggle_equip_named") {
+            app.cmd.dispatch(app.cmd.cmd_equip_item_named(ui_out.intent.name, { index: ui_out.intent.index, toggle: true }));
         }
     }
 

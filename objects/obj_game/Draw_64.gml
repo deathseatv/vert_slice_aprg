@@ -27,6 +27,19 @@ var hud_h = 16;
 hud_draw_hp_bar(hud_x, hud_y + 32, hud_w, hud_h,
                 app.domain.player.hp, app.domain.player.hp_max,
                 "Player");
+hud_draw_hp_bar(hud_x, hud_y + 32, hud_w, hud_h,
+                app.domain.player.hp, app.domain.player.hp_max,
+                "Player");
+
+// Equipped item (HUD)
+var eq_label = "(none)";
+if (is_struct(app.domain.player) && is_struct(app.domain.player.equipment) && is_struct(app.domain.player.equipment.weapon)) {
+    var w = app.domain.player.equipment.weapon;
+    if (variable_struct_exists(w, "name") && w.name != undefined) eq_label = string(w.name);
+}
+draw_set_color(c_white);
+draw_text(hud_x, hud_y + 56, "Equipped: " + eq_label);
+
 
 // Hovered enemy HP (if any)
 if (is_struct(hovered_enemy)) {

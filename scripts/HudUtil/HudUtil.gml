@@ -154,6 +154,14 @@ function invui_get_controller() {
                 var col_y1 = 0;
                 var col_y2 = gh;
 
+                // Equip slot (to the left of icon column)
+                var equip_size = 40;
+                var equip_pad = 12;
+                var equip_x2 = col_x1 - equip_pad;
+                var equip_x1 = equip_x2 - equip_size;
+                var equip_y1 = 16;
+                var equip_y2 = equip_y1 + equip_size;
+
                 var msx = _mouse.sx;
                 var msy = _mouse.sy;
 
@@ -194,6 +202,16 @@ function invui_get_controller() {
 
                         out.ui_consumed = true;
                     }
+                    // Left-click on equip slot => equip (consumes input)
+                    else if (_app.input.mouse_pressed_left() && msx >= equip_x1 && msx <= equip_x2 && msy >= equip_y1 && msy <= equip_y2) {
+                        _app.domain.player.equipment.weapon = _app.domain.carry_item;
+
+                        _app.domain.carry_active = false;
+                        _app.domain.carry_item = undefined;
+                        _app.domain.carry_original_index = -1;
+
+                        out.ui_consumed = true;
+                    }
                     // Left-click in world area (outside panel) => drop (consumes input)
                     else if (_app.input.mouse_pressed_left() && mouse_in_world_area) {
                         var nm = "item";
@@ -217,6 +235,17 @@ function invui_get_controller() {
 
                     // Carry active => never hold-attack
                     _app.domain.player.attack_hold = false;
+                }
+                // ----------------------------
+                // Equip slot interactions when not carrying
+                // ----------------------------
+                else if (_app.input.mouse_pressed_left() && msx >= equip_x1 && msx <= equip_x2 && msy >= equip_y1 && msy <= equip_y2) {
+                    // Unequip to inventory (end)
+                    if (is_struct(_app.domain.player.equipment.weapon)) {
+                        array_push(_app.domain.player.inventory, _app.domain.player.equipment.weapon);
+                        _app.domain.player.equipment.weapon = undefined;
+                    }
+                    out.ui_consumed = true;
                 }
                 // ----------------------------
                 // Column interactions (scroll + click-to-pick) when not carrying
@@ -320,6 +349,44 @@ function invui_get_controller() {
                 draw_set_color(c_white);
                 draw_text(16, 80, "INVENTORY");
 
+                // Equip slot (left of icon column)
+                var col_x1 = panel_w - 56;
+
+                var equip_size = 40;
+                var equip_pad = 12;
+                var equip_x2 = col_x1 - equip_pad;
+                var equip_x1 = equip_x2 - equip_size;
+                var equip_y1 = 16;
+                var equip_y2 = equip_y1 + equip_size;
+
+                draw_set_alpha(1);
+                draw_set_color(c_black);
+                draw_rectangle(equip_x1 - 2, equip_y1 - 2, equip_x2 + 2, equip_y2 + 2, false);
+                draw_set_alpha(0.9);
+                draw_set_color(c_ltgray);
+                draw_rectangle(equip_x1, equip_y1, equip_x2, equip_y2, false);
+                draw_set_alpha(1);
+
+                draw_set_color(c_white);
+                draw_text(equip_x1, equip_y2 + 6, "EQUIPPED");
+
+                // Equipped item label
+                if (is_struct(_app.domain.player.equipment.weapon)) {
+                    var w = _app.domain.player.equipment.weapon;
+                    var nmw = "item";
+                    if (variable_struct_exists(w, "name") && w.name != undefined) nmw = string(w.name);
+                    // simple icon letter
+                    var ch = string_upper(string_copy(nmw, 1, 1));
+                    draw_set_color(c_dkgray);
+                    draw_rectangle(equip_x1 + 4, equip_y1 + 4, equip_x2 - 4, equip_y2 - 4, false);
+                    draw_set_color(c_white);
+                    draw_text(equip_x1 + 14, equip_y1 + 10, ch);
+                    draw_text(equip_x1, equip_y2 + 22, nmw);
+                } else {
+                    draw_set_color(c_white);
+                    draw_text(equip_x1, equip_y2 + 22, "(none)");
+                }
+
                 // Text list (left area)
                 var inv = _app.domain.player.inventory;
                 var inv_y = 104;
@@ -356,6 +423,15 @@ function invui_get_controller() {
                     var n = array_length(inv);
                     var icon_x = col_x1 + floor((col_w - ICON) * 0.5);
 
+                        var equipped_uid = -1;
+                        var equipped_name = "";
+                        if (is_struct(_app.domain.player) && is_struct(_app.domain.player.equipment) && is_struct(_app.domain.player.equipment.weapon)) {
+                            var w = _app.domain.player.equipment.weapon;
+                            if (variable_struct_exists(w, "uid") && w.uid != undefined) equipped_uid = w.uid;
+                            if (variable_struct_exists(w, "name") && w.name != undefined) equipped_name = string_lower(string(w.name));
+                        }
+
+
                     for (var i = 0; i < n; i++) {
                         var _y = PAD_TOP + i * pitch - scroll;
                         var y2 = _y + ICON;
@@ -365,6 +441,20 @@ function invui_get_controller() {
                         // Icon container
                         draw_set_alpha(0.85);
                         draw_set_color(c_black);
+
+                        // Highlight equipped weapon
+                        var row = inv[i];
+                        var row_uid = -1;
+                        var row_name = "";
+                        if (is_struct(row)) {
+                            if (variable_struct_exists(row, "uid") && row.uid != undefined) row_uid = row.uid;
+                            if (variable_struct_exists(row, "name") && row.name != undefined) row_name = string_lower(string(row.name));
+                        }
+                        var is_equipped = false;
+                        if (equipped_uid >= 0 && row_uid >= 0) is_equipped = (row_uid == equipped_uid);
+                        else if (equipped_name != "") is_equipped = (row_name == equipped_name);
+
+                        if (is_equipped) draw_set_color(c_dkgray);
                         draw_rectangle(icon_x, _y, icon_x + ICON, _y + ICON, false);
                         draw_set_alpha(1);
                         draw_set_color(c_white);

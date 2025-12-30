@@ -202,7 +202,26 @@ function AppBoot() constructor {
 	    if (console.open) console.submit(_c.line);
 	});
 
-    cmd.register("cmd_give_item", function(_c) {
+    
+    // Equip/Unequip (Phase 6)
+    // _c: { name, index?, toggle? }
+    cmd.register("cmd_equip_item_named", function(_c) {
+        if (_c == undefined || _c.name == undefined) return;
+        var idx = undefined;
+        var tog = true;
+        if (variable_struct_exists(_c, "index")) idx = _c.index;
+        if (variable_struct_exists(_c, "toggle")) tog = _c.toggle;
+        ports.action.impl.equip_item_named(_c.name, idx, tog);
+    });
+
+    // _c: { name? }
+    cmd.register("cmd_unequip_item_named", function(_c) {
+        var nm = undefined;
+        if (_c != undefined && variable_struct_exists(_c, "name")) nm = _c.name;
+        ports.action.impl.unequip_item_named(nm);
+    });
+
+cmd.register("cmd_give_item", function(_c) {
         // _c: { target, item, count }
         if (_c.target != "player") {
             console.print("Give failed: only target 'player' supported");
