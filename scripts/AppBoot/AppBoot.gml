@@ -133,6 +133,49 @@ function AppBoot() constructor {
 	    diag.log("Click tx " + string(tx) + " ty " + string(ty));
 	});
 
+    // World-affecting gameplay intents (Phase 5: all mutations originate from commands)
+    cmd.register("cmd_pickup_item", function(_c) {
+        // _c: { item_id }
+        if (_c.item_id == undefined) return;
+        ports.action.impl.player_try_pickup_item(_c.item_id);
+    });
+
+    cmd.register("cmd_attack_enemy", function(_c) {
+        // _c: { enemy_id }
+        if (_c.enemy_id == undefined) return;
+        combat_player_issue_attack_order(domain, _c.enemy_id);
+    });
+
+    // Standard drop command: drop an item either at a world position (tile) or near the player.
+    // _c: { name, mode:"near_player"|"world", sx, sy, cam, view_mode }
+    cmd.register("cmd_drop_item_named", function(_c) {
+        if (_c.name == undefined) return;
+
+        var mode = _c.mode;
+        if (mode == undefined) mode = "near_player";
+
+        if (mode == "world") {
+            // Translate GUI screen coords -> world -> tile center via ProjectionUtil.
+            if (_c.sx == undefined || _c.sy == undefined || !is_struct(_c.cam)) {
+                // Fallback to safe behavior.
+                ports.action.impl.spawn_item_drop_near_player_named(_c.name);
+                return;
+            }
+
+            var vm = _c.view_mode;
+            if (vm == undefined) vm = view.mode;
+
+            var wpos;
+            if (vm == "ortho") wpos = proj.screen_to_world_ortho(_c.sx, _c.sy, _c.cam);
+            else wpos = proj.screen_to_world_iso(_c.sx, _c.sy, _c.cam);
+
+            ports.action.impl.spawn_item_drop_at_world_named(_c.name, wpos.x, wpos.y, true);
+        } else {
+            // Phase 4 behavior: ignore cursor, find nearest unoccupied tile to player.
+            ports.action.impl.spawn_item_drop_near_player_named(_c.name);
+        }
+    });
+
 	cmd.register("cmd_toggle_console", function(_c) {
 	    var was_open = console.open;
 	    console.toggle();
